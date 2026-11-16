@@ -183,6 +183,8 @@ QuantumBilling is part of **Winter of Code Social 2026**, and first-time contrib
    - [All open issues](https://github.com/phravins/QuantumBilling/issues)
 4. **Comment on the issue to ask for it**, and start once it's assigned to you.
 
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). If you change the UI, check it against the [accessibility checklist](ACCESSIBILITY.md#contributor-checklist).
+
 Questions go in the QuantumBilling post in **#find-a-project** on the [Code Social Discord](https://discord.gg/MSTNyRSPYW). To report a security problem, follow [Reporting a vulnerability](CONTRIBUTING.md#reporting-a-vulnerability) instead of opening an issue.
 
 ## Deploy
@@ -244,6 +246,8 @@ Detailed guides live in [`docs/`](docs/README.md).
 | [Deployment and operations](docs/deployment.md) | Releases, versions, service setup, upgrades, health, jobs, backups |
 | [API](docs/api.md) | Keys, scopes, endpoints, errors, idempotency ([OpenAPI](docs/openapi.json)) |
 | [Webhooks](docs/webhooks.md) | Event catalogue, signatures, retries, secret rotation |
+| [Accessibility](ACCESSIBILITY.md) | WCAG 2.2 AA target, what works, known gaps, how to report a problem |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Expected behaviour and how to report a concern |
 
 To propose a change or report a vulnerability, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 

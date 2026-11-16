@@ -150,7 +150,12 @@ defmodule QuantumBillingWeb.PublicInvoiceLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-base-200/50 py-8 px-4 sm:px-6 lg:px-8">
+    <Layouts.skip_link />
+    <main
+      id="main-content"
+      tabindex="-1"
+      class="min-h-screen bg-base-200/50 py-8 px-4 focus:outline-none sm:px-6 lg:px-8"
+    >
       <div class="max-w-4xl mx-auto space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-base-100 p-6 rounded-2xl border border-base-300 shadow-sm">
           <div>
@@ -272,7 +277,7 @@ defmodule QuantumBillingWeb.PublicInvoiceLive do
           &bull; Secure Encrypted Checkout
         </div>
       </div>
-    </div>
+    </main>
     """
   end
 end

@@ -42,6 +42,7 @@ defmodule QuantumBillingWeb.Layouts do
       |> assign(:settings_sections, visible_settings_sections(assigns[:current_scope]))
 
     ~H"""
+    <.skip_link />
     <div class="flex min-h-screen bg-base-200">
       <%!-- Behind the drawer on narrow screens; a click outside closes it. --%>
       <div
@@ -350,7 +351,11 @@ defmodule QuantumBillingWeb.Layouts do
           </div>
         </header>
 
-        <main class="flex flex-1 flex-col overflow-y-auto px-2 pb-2 pt-2 sm:px-2.5 sm:pb-2.5">
+        <main
+          id="main-content"
+          tabindex="-1"
+          class="flex flex-1 flex-col overflow-y-auto px-2 pb-2 pt-2 focus:outline-none sm:px-2.5 sm:pb-2.5"
+        >
           {render_slot(@inner_block)}
         </main>
       </div>
@@ -662,6 +667,7 @@ defmodule QuantumBillingWeb.Layouts do
 
   def focus(assigns) do
     ~H"""
+    <.skip_link />
     <div
       id="focus-shell"
       class="relative isolate flex min-h-dvh flex-col bg-base-100 text-base-content"
@@ -714,7 +720,11 @@ defmodule QuantumBillingWeb.Layouts do
         </div>
       </div>
 
-      <main class="flex flex-1 flex-col items-center px-4 py-8 sm:px-8 sm:py-10">
+      <main
+        id="main-content"
+        tabindex="-1"
+        class="flex flex-1 flex-col items-center px-4 py-8 focus:outline-none sm:px-8 sm:py-10"
+      >
         {render_slot(@inner_block)}
       </main>
 
@@ -754,6 +764,7 @@ defmodule QuantumBillingWeb.Layouts do
 
   def auth(assigns) do
     ~H"""
+    <.skip_link />
     <div class="relative flex min-h-screen flex-col items-center justify-center bg-base-100 px-4 py-20">
       <div class="absolute left-4 top-4 flex items-center gap-2 text-lg font-semibold tracking-tight text-base-content md:left-8 md:top-8">
         <.icon name="hero-receipt-percent" class="size-6" /> QuantumBilling
@@ -766,9 +777,13 @@ defmodule QuantumBillingWeb.Layouts do
         {render_slot(@top_link)}
       </div>
 
-      <div class="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+      <main
+        id="main-content"
+        tabindex="-1"
+        class="mx-auto flex w-full flex-col justify-center space-y-6 focus:outline-none sm:w-[350px]"
+      >
         {render_slot(@inner_block)}
-      </div>
+      </main>
 
       <p class="absolute inset-x-0 bottom-6 px-4 text-center text-xs text-base-content/60">
         GST invoicing, e-way bills and compliance — all in one place.
@@ -792,6 +807,7 @@ defmodule QuantumBillingWeb.Layouts do
 
   def legal(assigns) do
     ~H"""
+    <.skip_link />
     <div class="flex min-h-screen flex-col bg-base-100">
       <header class="border-b border-base-300">
         <div class="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
@@ -811,7 +827,11 @@ defmodule QuantumBillingWeb.Layouts do
         </div>
       </header>
 
-      <main class="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
+      <main
+        id="main-content"
+        tabindex="-1"
+        class="mx-auto w-full max-w-3xl flex-1 px-6 py-12 focus:outline-none"
+      >
         <h1 class="text-3xl font-semibold tracking-tight text-base-content">{@title}</h1>
 
         <p id="legal-dates" class="mt-2 text-sm text-base-content/60">
@@ -858,6 +878,27 @@ defmodule QuantumBillingWeb.Layouts do
 
       <p class="text-sm text-base-content/60">{@subtitle}</p>
     </div>
+    """
+  end
+
+  @doc """
+  The "Skip to content" link (WCAG 2.4.1). Hidden until focused, so the first
+  Tab on any page offers a jump past the navigation to `#main-content`.
+  """
+  def skip_link(assigns) do
+    ~H"""
+    <a
+      id="skip-link"
+      href="#main-content"
+      class={[
+        "sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100]",
+        "focus:rounded-md focus:border focus:border-base-300 focus:bg-base-100 focus:px-4 focus:py-2",
+        "focus:text-sm focus:font-medium focus:text-base-content focus:shadow-lg",
+        "focus:outline-2 focus:outline-offset-2 focus:outline-base-content"
+      ]}
+    >
+      Skip to content
+    </a>
     """
   end
 

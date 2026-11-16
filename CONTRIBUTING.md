@@ -9,6 +9,9 @@ this page links to it rather than repeating it.
 By contributing, you agree that your contribution is licensed under the
 project's [MIT licence](LICENSE).
 
+Everyone taking part, in issues, pull requests, reviews and on Discord,
+follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 **Found a security problem?** Don't open a public issue. See
 [Reporting a vulnerability](#reporting-a-vulnerability).
 
@@ -310,7 +313,8 @@ In the description, cover:
 - **What and why:** the problem and how the change solves it. Link the issue.
 - **How you tested it:** the tests you added, and confirmation that
   `mix precommit` (and Sobelow, if relevant) ran clean.
-- **Screenshots** for visible UI changes.
+- **Screenshots** for visible UI changes, and confirmation that they pass the
+  [accessibility checklist](ACCESSIBILITY.md#contributor-checklist).
 - **Migrations:** whether they're public or tenant, whether they change
   existing data, and how to roll back.
 - **Configuration:** new or changed environment variables.

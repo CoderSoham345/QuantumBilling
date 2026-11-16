@@ -142,14 +142,14 @@
   --qb-faint: #9ca3af; /* column headers, row numbers */
   --qb-head-bg: #f9fafb; /* header band */
   --qb-row-hover: #f3f4f6;
-  --qb-field-focus: #9ca3af; /* focus darkens the border, no glow */
+  --qb-field-focus: #6b7280; /* focus darkens the border, no glow; 4.8:1 on white (WCAG 1.4.11) */
 }
 
 [data-theme="dark"] {
   --qb-faint: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   --qb-head-bg: transparent;
   --qb-row-hover: color-mix(in oklab, var(--color-base-200) 60%, transparent);
-  --qb-field-focus: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+  --qb-field-focus: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -157,7 +157,7 @@
     --qb-faint: color-mix(in oklab, var(--color-base-content) 60%, transparent);
     --qb-head-bg: transparent;
     --qb-row-hover: color-mix(in oklab, var(--color-base-200) 60%, transparent);
-    --qb-field-focus: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+    --qb-field-focus: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   }
 }
 
