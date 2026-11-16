@@ -5,6 +5,8 @@ defmodule QuantumBilling.Settings.Organization do
   """
   use Ecto.Schema
 
+  @type t :: %__MODULE__{}
+
   import Ecto.Changeset
 
   alias QuantumBilling.Encrypted

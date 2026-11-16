@@ -162,7 +162,6 @@ defmodule QuantumBillingWeb.SettingsLive.Team do
       case action do
         :member_role_changed -> "made #{user.email} #{details["role"]}"
         :member_removed -> "removed #{user.email} from the business"
-        :member_invited -> "gave #{user.email} access as #{details["role"]}"
       end
 
     QuantumBilling.SecurityAlerts.admin_event(business, actor, summary)

@@ -276,7 +276,6 @@ defmodule QuantumBilling.Webhooks do
     summary =
       case action do
         :webhook_endpoint_created -> "added a webhook endpoint sending to #{endpoint.url}"
-        :webhook_endpoint_updated -> "changed the webhook endpoint to #{endpoint.url}"
         :webhook_secret_rotated -> "issued a new signing secret for #{endpoint.url}"
         _other -> nil
       end

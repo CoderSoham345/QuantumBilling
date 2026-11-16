@@ -10,6 +10,8 @@ defmodule QuantumBilling.Invoices.Invoice do
   """
   use Ecto.Schema
 
+  @type t :: %__MODULE__{}
+
   import Ecto.Changeset
   import Ecto.Query, only: [from: 2]
 
