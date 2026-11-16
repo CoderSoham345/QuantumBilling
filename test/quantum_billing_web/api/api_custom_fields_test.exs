@@ -37,8 +37,15 @@ defmodule QuantumBillingWeb.API.CustomFieldsTest do
     field.("client", %{"label" => "Credit score", "type" => "number", "include_in_api" => false})
     field.("invoice", %{"label" => "Deposit", "type" => "money", "include_in_api" => true})
     field.("invoice_item", %{"label" => "Batch", "type" => "text", "include_in_api" => true})
+
     field.("e_way_bill", %{"label" => "Driver phone", "type" => "phone", "include_in_api" => true})
-    field.("e_way_bill", %{"label" => "Internal notes", "type" => "text", "include_in_api" => false})
+
+    field.("e_way_bill", %{
+      "label" => "Internal notes",
+      "type" => "text",
+      "include_in_api" => false
+    })
+
     %{owner: user}
   end
 

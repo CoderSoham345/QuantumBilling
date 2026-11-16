@@ -1,14 +1,81 @@
-# QuantumBilling
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img src="docs/assets/logo-light.svg" alt="QuantumBilling" width="340">
+  </picture>
+</p>
+
+<p align="center">
+  <strong>Free, open-source GST billing for Indian businesses.</strong><br>
+  Invoices, e-invoices, e-way bills and payment links, on a server you control.
+</p>
+
+<p align="center">
+  <a href="mix.exs"><img alt="Version v0.1.0" src="https://img.shields.io/badge/version-v0.1.0-111827"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-111827"></a>
+  <img alt="Elixir 1.18" src="https://img.shields.io/badge/Elixir-1.18-4B275F?logo=elixir&logoColor=white">
+  <img alt="Phoenix 1.8" src="https://img.shields.io/badge/Phoenix-1.8-FD4F00">
+  <img alt="PostgreSQL 16" src="https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white">
+  <a href="#contributing"><img alt="Winter of Code Social 2026" src="https://img.shields.io/badge/Winter_of_Code_Social-2026-0E7490"></a>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#run-locally">Run locally</a> ·
+  <a href="#documentation">Documentation</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
 ![QuantumBilling dashboard: invoices issued, tax liability, receivables, GST by month, invoices by status, top clients and the compliance calendar](docs/assets/screenshots/dashboard.png)
 
-**Version 0.1.0** · MIT License · Elixir 1.18 / OTP 27 · Phoenix 1.8 · PostgreSQL 16
+## What is QuantumBilling?
 
-QuantumBilling is a billing application for businesses, built with Phoenix LiveView. It handles clients, invoices under India GST or VAT, credit and debit notes, e-invoice registration, e-way bills, recurring billing, payment links, the dashboard and exports, and compliance reminders.
+QuantumBilling is a web application for sending invoices and staying on top of tax paperwork. It is built with Elixir and Phoenix LiveView.
 
-One installation serves many businesses. Each business keeps its books in its own PostgreSQL schema (`biz_1`, `biz_2`, …), while accounts, memberships and background jobs are shared in `public`.
+With it, a business can:
 
-**Why it matters.** Small and medium businesses in India have to issue GST-correct invoices, register e-invoices and raise e-way bills. QuantumBilling gives them a free, open-source way to do that on a server they control, with their records kept in their own database.
+- keep a list of its **clients**;
+- raise **invoices** under India GST or VAT, and **credit and debit notes** against them;
+- register invoices with the government's e-invoice portal (the IRP), which returns an **IRN**, the invoice's official reference number;
+- raise **e-way bills**, the permits needed to move goods by road;
+- bill customers automatically with **recurring invoices**;
+- get paid through **payment links**;
+- watch its numbers on a **dashboard**, export its data, and get **compliance reminders** before filing dates.
+
+**Who it is for.** Small and medium businesses in India must issue GST-correct invoices, register e-invoices and raise e-way bills. QuantumBilling gives them a free, open-source way to do that on a server they control, with their records in their own database. Accountants who look after several businesses can run them all from one installation.
+
+## Contents
+
+- [How it works](#how-it-works)
+- [At a glance](#at-a-glance)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Run locally](#run-locally)
+- [Contributing](#contributing)
+- [Deploy](#deploy)
+- [Checks](#checks)
+- [Documentation](#documentation)
+- [Versions](#versions)
+- [Current limits](#current-limits)
+- [License](#license)
+
+## How it works
+
+- **One installation, many businesses.** Each business keeps its books in its own PostgreSQL schema (`biz_1`, `biz_2`, …). User accounts, memberships and background jobs are shared in the `public` schema.
+- **One set of rules.** The web pages (Phoenix LiveView) and the REST API call the same business logic, so an invoice follows the same rules however it is created.
+- **Background jobs.** Oban runs scheduled and slow work, such as recurring invoices, emails, e-invoice registration and nightly clean-up. It uses the same PostgreSQL database, so there is no separate queue service.
+- **PDFs.** Invoices are printed to PDF by headless Chromium running on the server.
+
+```mermaid
+flowchart LR
+  user["Browser"] --> app["Phoenix app<br/>LiveView pages + REST API"]
+  api["API clients"] --> app
+  app --> db[("PostgreSQL<br/>public + biz_1, biz_2, …")]
+  app --> jobs["Oban jobs"]
+  jobs --> db
+  jobs --> ext["IRP e-invoice · NIC e-way bill<br/>Razorpay · SMTP email"]
+  app --> pdf["Chromium<br/>invoice PDFs"]
+```
 
 ## At a glance
 
@@ -25,7 +92,7 @@ One installation serves many businesses. Each business keeps its books in its ow
 
 - **Invoicing.** Each business charges **India GST** (CGST/SGST/IGST from the place of supply) or **VAT** (UAE, Gulf states, UK, EU), and bills in INR, AED, SAR, QAR, GBP, EUR or USD. Invoices get numbered series, snapshots, statuses and a Bin with restore.
 - **Adjustments.** Credit and debit notes follow the regime of their invoice.
-- **India compliance.** IRP e-invoice registration, e-way bills (Form GST EWB-01 with Part-B legs), the GSTR-1 export, an HSN/SAC finder, and a filing calendar with your own reminders.
+- **India compliance.** IRP e-invoice registration, e-way bills (Form GST EWB-01 with Part-B legs), the GSTR-1 export (the monthly return of sales), an HSN/SAC finder for product and service codes, and a filing calendar with your own reminders.
 - **Getting paid.** Email delivery with PDF, a public invoice page, and Razorpay payment links or a direct UPI QR, all for INR invoices.
 - **Recurring billing.** Profiles generate invoices on a daily schedule.
 - **Invoice designer.** Starting designs, layout blocks, letterheads, watermarks, payment details and printable custom fields.
@@ -34,7 +101,8 @@ One installation serves many businesses. Each business keeps its books in its ow
 - **Integrations.** A REST API with idempotent writes, signed outgoing webhooks, and Google Calendar sync for compliance dates.
 - **Data.** A dashboard with a sales register and tax-summary CSV exports, and a per-business JSON backup and restore.
 
-Some integrations are simulated until you configure them. IRP registration runs in simulation by default, and e-way bills are demo numbers until `NIC_EWB_API_URL` is set. Both are labelled as demo wherever they appear. See [Current limits](#current-limits).
+> [!NOTE]
+> Some integrations are simulated until you configure them. IRP registration runs in simulation by default, and e-way bills are demo numbers until `NIC_EWB_API_URL` is set. Both are labelled as demo wherever they appear. See [Current limits](#current-limits).
 
 ## Screenshots
 
@@ -55,7 +123,11 @@ The screenshots show release v0.1.0 with fictional demo data. The IRNs and e-way
 
 ## Run locally
 
+### 1. Install the prerequisites
+
 You need Elixir 1.18.3 / Erlang OTP 27, PostgreSQL 16, and Chromium for PDF generation. The project declares Elixir `~> 1.17`; the [stack guide](docs/tech-stack.md) explains the pinned versions.
+
+### 2. Create your `.env` file
 
 Copy the template **only if `.env` does not already exist**:
 
@@ -69,18 +141,22 @@ In `.env`:
 - Fill `SECRET_KEY_BASE`, `TOTP_ENCRYPTION_KEY` and `SECRETS_ENCRYPTION_KEY`, generating a separate value for each with `openssl rand -base64 48`.
 - On an existing installation, keep the encryption keys you already have.
 
+### 3. Set up and start the app
+
 ```bash
-mix deps.get
-mix ecto.create
-mix ecto.migrate
-mix assets.setup
-mix assets.build
-mix phx.server
+mix deps.get       # download the Elixir dependencies
+mix ecto.create    # create the database
+mix ecto.migrate   # create the tables
+mix assets.setup   # install the Tailwind and esbuild tools
+mix assets.build   # build the CSS and JavaScript
+mix phx.server     # start the app on port 4000
 ```
 
-Open [http://localhost:4000/users/log-in](http://localhost:4000/users/log-in). The [setup guide](docs/getting-started.md) covers registration and seeding.
-
 `mix ecto.migrate` applies the public migrations, then the tenant migrations to every business schema. Read the [database guide](docs/database.md) before you migrate an existing installation.
+
+### 4. Sign in
+
+Open [http://localhost:4000/users/log-in](http://localhost:4000/users/log-in). The [setup guide](docs/getting-started.md) covers registration and seeding.
 
 ### Seed login
 
@@ -111,7 +187,7 @@ Questions go in the QuantumBilling post in **#find-a-project** on the [Code Soci
 
 ## Deploy
 
-QuantumBilling ships as an OTP release. Build it with the same Elixir/OTP versions, on the same OS family as the server:
+QuantumBilling ships as an OTP release, a self-contained build of the app that runs on the server without Elixir installed. Build it with the same Elixir/OTP versions, on the same OS family as the server:
 
 ```bash
 mix deps.get --only prod
@@ -145,6 +221,8 @@ The proxy terminates TLS, overwrites `x-forwarded-proto` and `x-forwarded-for`, 
 
 ## Checks
 
+Run these before you open a pull request:
+
 ```bash
 mix test
 mix precommit   # warnings as errors, drop unused locked deps, format, then the tests
@@ -177,7 +255,7 @@ To propose a change or report a vulnerability, read [CONTRIBUTING.md](CONTRIBUTI
 | REST API | `v1` paths, OpenAPI 1.2.0 | [`docs/openapi.json`](docs/openapi.json), versioned separately from the release |
 | Business JSON backup | Format 3.0 | Restore also accepts 2.0 and 2.1 |
 
-The README and the [docs index](docs/README.md) state the release version. `DocsVersionTest` fails if either stops matching `mix.exs`, so bump them together, and retake the screenshots in [`docs/assets/screenshots`](docs/assets/screenshots) when the screens change. The [deployment guide](docs/deployment.md#versions-and-upgrades) covers what a version change means on a server.
+The README and the [docs index](docs/README.md) state the release version. `DocsVersionTest` fails if either stops matching `mix.exs`, so bump them together (including the version badge at the top of this file), and retake the screenshots in [`docs/assets/screenshots`](docs/assets/screenshots) when the screens change. The [deployment guide](docs/deployment.md#versions-and-upgrades) covers what a version change means on a server.
 
 ## Current limits
 
