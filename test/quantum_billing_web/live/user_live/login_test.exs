@@ -19,6 +19,12 @@ defmodule QuantumBillingWeb.UserLive.LoginTest do
 
       refute html =~ "Local mail adapter"
     end
+
+    test "offers a forgot password button", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      assert has_element?(lv, "#forgot-password[href='/users/forgot-password']")
+    end
   end
 
   describe "user login - password" do

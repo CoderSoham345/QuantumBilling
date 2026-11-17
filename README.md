@@ -11,6 +11,11 @@
 </p>
 
 <p align="center">
+  <a href="https://osworks.in"><img src="docs/assets/osworks-mark.svg" alt="OSWORKS" width="40"></a><br>
+  <sub>Open source project of the <a href="https://osworks.in"><strong>OSWORKS</strong></a> open source community</sub>
+</p>
+
+<p align="center">
   <a href="mix.exs"><img alt="Version v0.1.0" src="https://img.shields.io/badge/version-v0.1.0-111827"></a>
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-111827"></a>
   <img alt="Elixir 1.18" src="https://img.shields.io/badge/Elixir-1.18-4B275F?logo=elixir&logoColor=white">
@@ -273,3 +278,14 @@ The [Business guide](docs/Business.md#18-current-implementation-limits) lists ev
 ## License
 
 Released under the [MIT License](LICENSE). Copyright (c) 2026 phravins.
+
+---
+
+<p align="center">
+  <a href="https://osworks.in"><img src="docs/assets/osworks-mark.svg" alt="OSWORKS" width="56"></a>
+</p>
+
+<p align="center">
+  Open source project of the <a href="https://osworks.in"><strong>OSWORKS</strong></a> open source community<br>
+  <a href="https://osworks.in">osworks.in</a>
+</p>

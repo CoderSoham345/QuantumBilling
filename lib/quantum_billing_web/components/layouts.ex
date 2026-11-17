@@ -915,7 +915,7 @@ defmodule QuantumBillingWeb.Layouts do
   def auth(assigns) do
     ~H"""
     <.skip_link />
-    <div class="relative flex min-h-screen flex-col items-center justify-center bg-base-100 px-4 py-20">
+    <div class="relative flex min-h-screen flex-col items-center justify-center bg-base-100 px-4 pt-20 pb-32">
       <div class="absolute left-4 top-4 flex items-center gap-2 text-lg font-semibold tracking-tight text-base-content md:left-8 md:top-8">
         <.icon name="hero-receipt-percent" class="size-6" /> QuantumBilling
       </div>
@@ -935,9 +935,23 @@ defmodule QuantumBillingWeb.Layouts do
         {render_slot(@inner_block)}
       </main>
 
-      <p class="absolute inset-x-0 bottom-6 px-4 text-center text-xs text-base-content/60">
-        GST invoicing, e-way bills and compliance — all in one place.
-      </p>
+      <footer class="absolute inset-x-0 bottom-6 flex justify-center px-4">
+        <a
+          id="osworks-credit"
+          href="https://osworks.in"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="group flex flex-col items-center gap-2 rounded-field px-2 py-1 text-center text-xs text-base-content/60 transition-colors hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-base-content"
+        >
+          <QuantumBillingWeb.OSWorks.mark class="size-8 text-base-content transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none" />
+          <span>
+            Open source project of the
+            <span class="font-semibold tracking-wide text-base-content">OSWORKS</span>
+            open source community
+          </span>
+          <span class="sr-only">(opens in a new tab)</span>
+        </a>
+      </footer>
     </div>
     <.flash_group flash={@flash} />
     """
