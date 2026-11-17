@@ -131,6 +131,7 @@ defmodule QuantumBillingWeb.UserLive.RegistrationTest do
       refute html =~ "registration_form"
       assert has_element?(lv, "#registration-closed")
       assert has_element?(lv, "#registration-sign-in[href='/users/log-in']")
+      assert has_element?(lv, "#auth-top-link[href='/users/log-in']", "Login")
     end
 
     test "an invitation works once", %{conn: conn} do

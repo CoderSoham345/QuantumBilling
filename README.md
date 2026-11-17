@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://osworks.in"><img src="docs/assets/osworks-mark.svg" alt="OSWORKS" width="40"></a><br>
-  <sub>Open source project of the <a href="https://osworks.in"><strong>OSWORKS</strong></a> open source community</sub>
+  <sub>QuantumBilling is a community driven project under <a href="https://osworks.in"><strong>OSWORKS</strong></a>.</sub>
 </p>
 
 <p align="center">
@@ -286,6 +286,6 @@ Released under the [MIT License](LICENSE). Copyright (c) 2026 phravins.
 </p>
 
 <p align="center">
-  Open source project of the <a href="https://osworks.in"><strong>OSWORKS</strong></a> open source community<br>
+  QuantumBilling is a community driven project under <a href="https://osworks.in"><strong>OSWORKS</strong></a>.<br>
   <a href="https://osworks.in">osworks.in</a>
 </p>

@@ -945,9 +945,7 @@ defmodule QuantumBillingWeb.Layouts do
         >
           <QuantumBillingWeb.OSWorks.mark class="size-8 text-base-content transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none" />
           <span>
-            Open source project of the
-            <span class="font-semibold tracking-wide text-base-content">OSWORKS</span>
-            open source community
+            QuantumBilling is a community driven project under <span class="font-semibold tracking-wide text-base-content">OSWORKS</span>.
           </span>
           <span class="sr-only">(opens in a new tab)</span>
         </a>

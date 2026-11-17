@@ -25,6 +25,12 @@ defmodule QuantumBillingWeb.UserLive.LoginTest do
 
       assert has_element?(lv, "#forgot-password[href='/users/forgot-password']")
     end
+
+    test "links to sign up with a corner button", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      assert has_element?(lv, "#auth-top-link[href='/users/register']", "Sign up")
+    end
   end
 
   describe "user login - password" do

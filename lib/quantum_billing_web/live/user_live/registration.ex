@@ -18,7 +18,9 @@ defmodule QuantumBillingWeb.UserLive.Registration do
     ~H"""
     <Layouts.auth flash={@flash}>
       <:top_link>
-        <.link navigate={~p"/users/log-in"} class="hover:underline">Login</.link>
+        <.link id="auth-top-link" navigate={~p"/users/log-in"} class={top_link_class()}>
+          Login
+        </.link>
       </:top_link>
 
       <Layouts.auth_heading
