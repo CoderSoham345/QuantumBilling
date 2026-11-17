@@ -67,11 +67,18 @@ defmodule QuantumBillingWeb.Router do
 
   # Owner-only: account administration and the full export.
   scope "/", QuantumBillingWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_business, :require_owner]
+    pipe_through [
+      :browser,
+      :require_authenticated_user,
+      :require_business,
+      :check_maintenance,
+      :require_owner
+    ]
 
     live_session :owner,
       on_mount: [
         {QuantumBillingWeb.UserAuth, :require_authenticated},
+        {QuantumBillingWeb.UserAuth, :check_maintenance},
         {QuantumBillingWeb.UserAuth, :require_onboarded},
         {QuantumBillingWeb.UserAuth, :require_business},
         {QuantumBillingWeb.UserAuth, :require_owner},
@@ -125,12 +132,13 @@ defmodule QuantumBillingWeb.Router do
 
   # Before "/settings/:section", which would otherwise match "/settings/team".
   scope "/", QuantumBillingWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_business]
+    pipe_through [:browser, :require_authenticated_user, :require_business, :check_maintenance]
 
     # NotificationsHook must run after :require_business: the feed is the business's.
     live_session :app,
       on_mount: [
         {QuantumBillingWeb.UserAuth, :require_authenticated},
+        {QuantumBillingWeb.UserAuth, :check_maintenance},
         {QuantumBillingWeb.UserAuth, :require_onboarded},
         {QuantumBillingWeb.UserAuth, :require_business},
         {QuantumBillingWeb.NotificationsHook, :default}
@@ -156,10 +164,36 @@ defmodule QuantumBillingWeb.Router do
       live "/compliance", ComplianceLive, :index
       live "/recurring", RecurringLive, :index
       live "/bin", BinLive, :index
+      # Every member may see it; the settings menu needs the business.
+      live "/community", CommunityLive, :index
       live "/settings", SettingsLive, :index
       live "/settings/:section", SettingsLive, :section
       live "/invoice-templates/:id", InvoiceTemplateDesignLive, :design
     end
+  end
+
+  # The super admin's pages span every business, so no :require_business; anyone
+  # else gets a 404. Must stay above the catch-all.
+  scope "/admin", QuantumBillingWeb do
+    pipe_through [:browser, :require_authenticated_user, :require_admin]
+
+    live_session :admin,
+      on_mount: [
+        {QuantumBillingWeb.UserAuth, :require_authenticated},
+        {QuantumBillingWeb.UserAuth, :require_admin}
+      ] do
+      live "/", AdminLive, :general
+      live "/config", AdminLive, :config
+      live "/health", AdminLive, :health
+      live "/layout", AdminLive, :layout
+    end
+  end
+
+  # Where maintenance mode sends everyone but super admins; no sign-in needed.
+  scope "/", QuantumBillingWeb do
+    pipe_through :browser
+
+    get "/maintenance", MaintenanceController, :show
   end
 
   # On :api, not :browser: a probe needs no session. Must stay above the catch-all.

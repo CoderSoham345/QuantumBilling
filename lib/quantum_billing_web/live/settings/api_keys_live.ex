@@ -136,6 +136,7 @@ defmodule QuantumBillingWeb.SettingsLive.ApiKeys do
       flash={@flash}
       current_scope={@current_scope}
       active_nav={@active_nav}
+      sidebar={:settings}
       active_sub={:"api-keys"}
     >
       <.header>

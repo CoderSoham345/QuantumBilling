@@ -99,7 +99,8 @@ defmodule QuantumBillingWeb.AuditLogsLive do
       flash={@flash}
       current_scope={@current_scope}
       active_nav={@active_nav}
-      active_sub={@section}
+      sidebar={:settings}
+      active_sub={:"audit-logs"}
       notifications={@notifications}
       unread_count={@unread_count}
     >

@@ -4,6 +4,7 @@ defmodule QuantumBillingWeb.Layouts do
   """
   use QuantumBillingWeb, :html
 
+  alias QuantumBilling.Accounts.Scope
   alias QuantumBillingWeb.SettingsComponents
   alias QuantumBillingWeb.SettingsLive
 
@@ -28,6 +29,15 @@ defmodule QuantumBillingWeb.Layouts do
     default: nil,
     doc: "the key of the active settings section, when one is open"
 
+  attr :sidebar, :atom,
+    default: :app,
+    values: [:app, :settings],
+    doc: "`:settings` swaps the main menu for the settings menu with a Back link"
+
+  attr :layout_draft, :list,
+    default: nil,
+    doc: "the super admin's unsaved sidebar layout; shows the layout editor and its banner"
+
   # Assigned by NotificationsHook; defaults cover pages rendered outside it.
   attr :notifications, :list, default: [], doc: "the newest notifications, newest first"
 
@@ -39,7 +49,6 @@ defmodule QuantumBillingWeb.Layouts do
     assigns =
       assigns
       |> assign(:nav_items, nav_items(assigns[:current_scope]))
-      |> assign(:settings_sections, visible_settings_sections(assigns[:current_scope]))
 
     ~H"""
     <.skip_link />
@@ -94,104 +103,31 @@ defmodule QuantumBillingWeb.Layouts do
               <.icon name="hero-chevron-double-left" class="size-4" />
             </button>
           </div>
-          <nav class="flex-1 overflow-y-auto px-2.5 pt-1 lg:sidebar-collapsed:px-2">
-            <p class={["px-3 pb-2 lg:sidebar-collapsed:hidden", micro_label_class()]}>Menu</p>
-
-            <ul class="space-y-0.5">
-              <li :for={item <- @nav_items} class="group">
-                <%!-- Stays open on settings pages; the 0fr to 1fr grid row animates the height. --%>
-                <input
-                  :if={item.key == :settings}
-                  type="checkbox"
-                  id="settings-sections-toggle"
-                  phx-hook=".SettingsDisclosure"
-                  checked={@active_sub != nil}
-                  data-open={to_string(@active_sub != nil)}
-                  class="peer sr-only"
-                />
-                <div class="flex items-center gap-0.5">
-                  <.link
-                    navigate={item.path}
-                    title={item.label}
-                    class={[
-                      "flex min-w-0 flex-1 items-center gap-2.5 rounded-field px-3 py-2",
-                      "text-sm transition-colors lg:sidebar-collapsed:justify-center lg:sidebar-collapsed:px-0",
-                      if(@active_nav == item.key,
-                        do: "bg-base-200 font-medium text-base-content",
-                        else: "text-base-content/60 hover:bg-base-200 hover:text-base-content"
-                      )
-                    ]}
-                  >
-                    <%!-- Each destination keeps its own hue, dimmed while inactive. --%>
-                    <.icon
-                      name={item.icon}
-                      class={[
-                        "size-4.5 shrink-0 transition-opacity",
-                        item.color,
-                        if(@active_nav == item.key,
-                          do: "opacity-100",
-                          else: "opacity-70 group-hover:opacity-100"
-                        )
-                      ]}
+          <nav
+            id={if(@sidebar == :settings, do: "settings-nav", else: "main-nav")}
+            aria-label={if(@sidebar == :settings, do: "Settings", else: "Main")}
+            class="flex-1 overflow-y-auto px-2.5 pt-1 lg:sidebar-collapsed:px-2"
+          >
+            <%= cond do %>
+              <% @layout_draft -> %>
+                <.layout_editor items={@layout_draft} />
+              <% @sidebar == :settings -> %>
+                <.settings_nav scope={@current_scope} active={@active_sub} />
+              <% true -> %>
+                <p class={["px-3 pb-2 lg:sidebar-collapsed:hidden", micro_label_class()]}>Menu</p>
+                <ul class="space-y-0.5">
+                  <li :for={item <- @nav_items} class="group">
+                    <.nav_link
+                      id={"nav-#{item.key}"}
+                      path={item.path}
+                      label={item.label}
+                      icon={item.icon}
+                      icon_class={item.color}
+                      active={@active_nav == item.key}
                     />
-                    <span class="truncate lg:sidebar-collapsed:sr-only">{item.label}</span>
-                  </.link>
-
-                  <label
-                    :if={item.key == :settings}
-                    for="settings-sections-toggle"
-                    class={[
-                      "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-field",
-                      "text-base-content/45 transition-colors hover:bg-base-200 hover:text-base-content",
-                      "lg:sidebar-collapsed:hidden"
-                    ]}
-                  >
-                    <span class="sr-only">Show settings sections</span>
-                    <.icon
-                      name="hero-chevron-down"
-                      class="size-4 transition-transform duration-200 group-has-[:checked]:rotate-180"
-                    />
-                  </label>
-                </div>
-
-                <div
-                  :if={item.key == :settings}
-                  id="settings-sections"
-                  class={[
-                    "grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out",
-                    "peer-checked:grid-rows-[1fr] lg:sidebar-collapsed:hidden"
-                  ]}
-                >
-                  <ul class="ml-4 space-y-0.5 overflow-hidden border-l border-base-300 pl-3 pt-0.5">
-                    <li :for={section <- @settings_sections}>
-                      <.link
-                        navigate={~p"/settings/#{section.key}"}
-                        id={"settings-link-#{section.key}"}
-                        class={[
-                          "group/sub flex items-center gap-2 rounded-field px-2.5 py-1.5 text-xs transition-colors",
-                          if(@active_sub == section.key,
-                            do: "bg-base-200 font-medium text-base-content",
-                            else: "text-base-content/60 hover:bg-base-200 hover:text-base-content"
-                          )
-                        ]}
-                      >
-                        <.icon
-                          name={section.icon}
-                          class={[
-                            "size-3.5 shrink-0 transition-opacity",
-                            if(@active_sub == section.key,
-                              do: "opacity-90",
-                              else: "opacity-55 group-hover/sub:opacity-90"
-                            )
-                          ]}
-                        />
-                        <span class="truncate">{section.short_title}</span>
-                      </.link>
-                    </li>
-                  </ul>
-                </div>
-              </li>
-            </ul>
+                  </li>
+                </ul>
+            <% end %>
           </nav>
 
           <div class="border-t border-base-300 p-2.5 lg:sidebar-collapsed:p-2">
@@ -241,6 +177,37 @@ defmodule QuantumBillingWeb.Layouts do
       </aside>
 
       <div class="flex min-w-0 flex-1 flex-col">
+        <div
+          :if={@layout_draft}
+          id="layout-banner"
+          role="region"
+          aria-label="Layout customization"
+          class="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 bg-primary px-4 py-2 text-primary-content"
+        >
+          <p class="flex items-center gap-2 text-sm">
+            <.icon name="hero-squares-plus" class="size-4" />
+            <span class="font-medium">Layout customization</span>
+            <span class="hidden opacity-70 sm:inline">· changes apply to everyone</span>
+          </p>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="layout-cancel"
+              phx-click="layout_cancel"
+              class="rounded-field px-3 py-1 text-sm transition-colors hover:bg-primary-content/15"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              id="layout-save"
+              phx-click="layout_save"
+              class="rounded-field bg-primary-content px-3 py-1 text-sm font-medium text-primary transition-opacity hover:opacity-90"
+            >
+              Save
+            </button>
+          </div>
+        </div>
         <header class="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-base-300 bg-base-100 px-3">
           <div class="flex min-w-0 items-center gap-1.5">
             <%!-- Narrow screens only: opens the drawer. --%>
@@ -361,46 +328,6 @@ defmodule QuantumBillingWeb.Layouts do
       </div>
     </div>
     <.flash_group flash={@flash} />
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".SettingsDisclosure">
-      // The server decides whether the list starts open: it is, exactly when a
-      // settings section is on screen (data-open). This hook used to remember a
-      // manual open in localStorage as well, which meant one click on the
-      // chevron unfolded the list on every page from then on -- under Invoices,
-      // under Clients, for ever. Nothing is remembered across pages now.
-      const STALE_KEY = "qb:settings-sections-open"
-
-      export default {
-        mounted() {
-          // Browsers that visited before the change still hold the old flag.
-          try { localStorage.removeItem(STALE_KEY) } catch (_error) {}
-
-          // `null` until the chevron is used on this page. Reset per mount:
-          // arriving somewhere new is not an override.
-          this.choice = null
-          this.apply(this.el.dataset.open === "true")
-          this.el.addEventListener("change", () => (this.choice = this.el.checked))
-        },
-
-        // LiveView puts a checkbox back to what the server rendered on every
-        // diff -- a notification arriving is enough. A choice made on this page
-        // has to survive that, so it is put back; otherwise the server's
-        // answer stands.
-        updated() {
-          this.apply(this.choice === null ? this.el.dataset.open === "true" : this.choice)
-        },
-
-        // Not the user opening it, so it must not animate -- otherwise the
-        // list would slide on every page load and every diff.
-        apply(open) {
-          if (this.el.checked === open) return
-
-          const panel = document.getElementById("settings-sections")
-          if (panel) panel.style.transition = "none"
-          this.el.checked = open
-          if (panel) requestAnimationFrame(() => (panel.style.transition = ""))
-        }
-      }
-    </script>
     """
   end
 
@@ -466,7 +393,7 @@ defmodule QuantumBillingWeb.Layouts do
             <.icon name="hero-squares-2x2" class="size-4" /> All businesses
           </.link>
           <.link
-            :if={QuantumBilling.Accounts.Scope.owner?(@scope)}
+            :if={Scope.owner?(@scope)}
             navigate={~p"/businesses/new"}
             id="new-business-link"
             class="flex items-center gap-2 rounded-field px-2.5 py-2 text-sm text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content"
@@ -485,44 +412,249 @@ defmodule QuantumBillingWeb.Layouts do
   defp current_business?(%{business: %{id: id}}, %{id: id}), do: true
   defp current_business?(_scope, _business), do: false
 
+  attr :id, :string, required: true
+  attr :path, :string, required: true
+  attr :label, :string, required: true
+  attr :icon, :string, required: true
+  attr :icon_class, :string, default: "text-base-content/70"
+  attr :active, :boolean, default: false
+  attr :method, :string, default: nil
+  attr :external, :boolean, default: false
+
+  # One sidebar row. Collapses to its icon on the rail, with the label kept for screen readers.
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      id={@id}
+      navigate={if(!@external and is_nil(@method), do: @path)}
+      href={if(@external or @method != nil, do: @path)}
+      method={@method || "get"}
+      target={if(@external, do: "_blank")}
+      rel={if(@external, do: "noopener noreferrer")}
+      title={@label}
+      aria-current={if(@active, do: "page")}
+      class={[
+        "group/nav flex min-w-0 items-center gap-2.5 rounded-field px-3 py-2",
+        "text-sm transition-colors lg:sidebar-collapsed:justify-center lg:sidebar-collapsed:px-0",
+        if(@active,
+          do: "bg-base-200 font-medium text-base-content",
+          else: "text-base-content/60 hover:bg-base-200 hover:text-base-content"
+        )
+      ]}
+    >
+      <.icon
+        name={@icon}
+        class={[
+          "size-4.5 shrink-0 transition-opacity",
+          @icon_class,
+          if(@active, do: "opacity-100", else: "opacity-70 group-hover/nav:opacity-100")
+        ]}
+      />
+      <span class="truncate lg:sidebar-collapsed:sr-only">{@label}</span>
+      <.icon
+        :if={@external}
+        name="hero-arrow-up-right"
+        class="ml-auto size-3 shrink-0 opacity-50 lg:sidebar-collapsed:hidden"
+      />
+    </.link>
+    """
+  end
+
+  attr :scope, :any, required: true
+  attr :active, :atom, default: nil
+
+  # The settings menu: account, business and installation pages in one column,
+  # with Back to the app at the top.
+  defp settings_nav(assigns) do
+    assigns = assign(assigns, :groups, settings_groups(assigns.scope))
+
+    ~H"""
+    <.link
+      id="settings-back"
+      navigate={if(business_chosen?(@scope), do: ~p"/dashboard", else: ~p"/businesses")}
+      title="Back"
+      class={[
+        "group/back mb-2 flex items-center gap-1.5 rounded-field px-3 py-2 text-sm font-medium",
+        "text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content",
+        "lg:sidebar-collapsed:justify-center lg:sidebar-collapsed:px-0"
+      ]}
+    >
+      <.icon
+        name="hero-chevron-left"
+        class="size-4 shrink-0 transition-transform group-hover/back:-translate-x-0.5"
+      />
+      <span class="lg:sidebar-collapsed:sr-only">Back</span>
+    </.link>
+
+    <div :for={{group, items} <- @groups} class="mb-4">
+      <p class={["px-3 pb-1.5 lg:sidebar-collapsed:hidden", micro_label_class()]}>{group}</p>
+      <ul class="space-y-0.5">
+        <li :for={item <- items}>
+          <.nav_link
+            id={"settings-link-#{item.key}"}
+            path={item.path}
+            label={item.label}
+            icon={item.icon}
+            active={@active == item.key}
+            method={item[:method]}
+            external={item[:external] == true}
+          />
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  defp settings_groups(scope) do
+    account = [
+      %{key: :profile, label: "My profile", path: ~p"/users/profile", icon: "hero-user-circle"},
+      %{
+        key: :account,
+        label: "Account & security",
+        path: ~p"/users/settings",
+        icon: "hero-lock-closed"
+      }
+    ]
+
+    business =
+      if business_chosen?(scope) do
+        for section <- visible_settings_sections(scope) do
+          %{
+            key: section.key,
+            label: section.short_title,
+            path: ~p"/settings/#{section.key}",
+            icon: section.icon
+          }
+        end
+      else
+        []
+      end
+
+    admin =
+      if Scope.admin?(scope) do
+        [
+          %{key: :admin, label: "Admin panel", path: ~p"/admin", icon: "hero-command-line"},
+          %{key: :layout, label: "Layout", path: ~p"/admin/layout", icon: "hero-squares-plus"}
+        ]
+      else
+        []
+      end
+
+    community =
+      if business_chosen?(scope),
+        do: [%{key: :community, label: "Community", path: ~p"/community", icon: "hero-heart"}],
+        else: []
+
+    other =
+      admin ++
+        community ++
+        [
+          %{
+            key: :documentation,
+            label: "Documentation",
+            path: QuantumBilling.GitHub.repo_url() <> "#readme",
+            icon: "hero-book-open",
+            external: true
+          },
+          %{
+            key: :"sign-out",
+            label: "Sign out",
+            path: ~p"/users/log-out",
+            icon: "hero-arrow-right-start-on-rectangle",
+            method: "delete"
+          }
+        ]
+
+    Enum.reject([{"Account", account}, {"Business", business}, {"Other", other}], fn {_, items} ->
+      items == []
+    end)
+  end
+
+  attr :items, :list, required: true
+
+  # The super admin's editor: the main menu, each row with move and show/hide controls.
+  defp layout_editor(assigns) do
+    assigns = assign(assigns, :last, length(assigns.items) - 1)
+
+    ~H"""
+    <p class={["px-3 pb-2 lg:sidebar-collapsed:hidden", micro_label_class()]}>Arrange menu</p>
+    <ul id="layout-items" class="space-y-1">
+      <li
+        :for={{item, index} <- Enum.with_index(@items)}
+        id={"layout-item-#{item.key}"}
+        data-hidden={to_string(item.hidden)}
+        class={[
+          "flex items-center gap-1 rounded-field border border-dashed px-2 py-1.5 transition-colors",
+          if(item.hidden,
+            do: "border-base-300 text-base-content/40",
+            else: "border-base-content/25 bg-base-100 text-base-content"
+          )
+        ]}
+      >
+        <.icon name={item.icon} class={["size-4 shrink-0", !item.hidden && item.color]} />
+        <span class={["min-w-0 flex-1 truncate text-sm", item.hidden && "line-through"]}>
+          {item.label}
+        </span>
+        <button
+          type="button"
+          id={"layout-up-#{item.key}"}
+          phx-click="layout_move"
+          phx-value-key={item.key}
+          phx-value-dir="up"
+          disabled={index == 0}
+          aria-label={"Move #{item.label} up"}
+          class="flex size-6 items-center justify-center rounded-field text-base-content/60 hover:bg-base-200 hover:text-base-content disabled:pointer-events-none disabled:opacity-30"
+        >
+          <.icon name="hero-chevron-up" class="size-3.5" />
+        </button>
+        <button
+          type="button"
+          id={"layout-down-#{item.key}"}
+          phx-click="layout_move"
+          phx-value-key={item.key}
+          phx-value-dir="down"
+          disabled={index == @last}
+          aria-label={"Move #{item.label} down"}
+          class="flex size-6 items-center justify-center rounded-field text-base-content/60 hover:bg-base-200 hover:text-base-content disabled:pointer-events-none disabled:opacity-30"
+        >
+          <.icon name="hero-chevron-down" class="size-3.5" />
+        </button>
+        <button
+          :if={item.key != :settings}
+          type="button"
+          id={"layout-toggle-#{item.key}"}
+          phx-click="layout_toggle"
+          phx-value-key={item.key}
+          aria-pressed={to_string(!item.hidden)}
+          aria-label={if(item.hidden, do: "Show #{item.label}", else: "Hide #{item.label}")}
+          class="flex size-6 items-center justify-center rounded-field text-base-content/60 hover:bg-base-200 hover:text-base-content"
+        >
+          <.icon name={if(item.hidden, do: "hero-eye-slash", else: "hero-eye")} class="size-3.5" />
+        </button>
+        <span :if={item.key == :settings} class="size-6" aria-hidden="true" />
+      </li>
+    </ul>
+    <p class="px-1 pt-3 text-xs text-base-content/50 lg:sidebar-collapsed:hidden">
+      Settings always stays visible, so no one is locked out.
+    </p>
+    """
+  end
+
   # Tolerates a nil scope. Hiding panels is cosmetic; the server enforces access.
   defp visible_settings_sections(scope) do
     sections =
-      if QuantumBilling.Accounts.Scope.vat?(scope),
+      if Scope.vat?(scope),
         do: Enum.reject(SettingsComponents.sections(), &SettingsLive.gst_only?(&1.key)),
         else: SettingsComponents.sections()
 
-    if QuantumBilling.Accounts.Scope.owner?(scope) do
+    if Scope.owner?(scope) do
       sections ++
         [
-          %{
-            key: :team,
-            title: "Team",
-            short_title: "Team",
-            subtitle: "Accounts and invitations",
-            icon: "hero-user-group"
-          },
-          %{
-            key: :"api-keys",
-            title: "API keys",
-            short_title: "API keys",
-            subtitle: "Access for your other systems",
-            icon: "hero-key"
-          },
-          %{
-            key: :webhooks,
-            title: "Webhooks",
-            short_title: "Webhooks",
-            subtitle: "Events sent to your systems",
-            icon: "hero-signal"
-          },
-          %{
-            key: :"data-model",
-            title: "Data model",
-            short_title: "Data model",
-            subtitle: "Your own fields on records",
-            icon: "hero-table-cells"
-          }
+          %{key: :"data-model", short_title: "Data model", icon: "hero-table-cells"},
+          %{key: :team, short_title: "Team", icon: "hero-user-group"},
+          %{key: :"api-keys", short_title: "API keys", icon: "hero-key"},
+          %{key: :webhooks, short_title: "Webhooks", icon: "hero-signal"},
+          %{key: :"audit-logs", short_title: "Audit log", icon: "hero-clipboard-document-list"}
         ]
     else
       Enum.reject(sections, &SettingsLive.owner_only?(&1.key))
@@ -578,10 +710,30 @@ defmodule QuantumBillingWeb.Layouts do
   # The India GST tools have no meaning for a VAT business.
   @gst_only_nav [:e_way_bills, :hsn_finder]
 
+  # The main menu in the super admin's saved order, without hidden items.
   defp nav_items(scope) do
-    if QuantumBilling.Accounts.Scope.vat?(scope),
-      do: Enum.reject(nav_items(), &(&1.key in @gst_only_nav)),
-      else: nav_items()
+    layout_items()
+    |> Enum.reject(&(&1.hidden or (Scope.vat?(scope) and &1.key in @gst_only_nav)))
+  end
+
+  @doc """
+  Every main menu item in the saved order, each with `:hidden`. Items added
+  since the layout was saved come last, shown. Settings is never hidden.
+  """
+  def layout_items(saved \\ QuantumBilling.InstallationSettings.nav_layout()) do
+    items = nav_items()
+    by_key = Map.new(items, &{Atom.to_string(&1.key), &1})
+
+    ordered =
+      for %{"key" => key} = entry <- saved,
+          item = Map.get(by_key, key),
+          item != nil,
+          uniq: true do
+        Map.put(item, :hidden, entry["hidden"] == true and item.key != :settings)
+      end
+
+    seen = MapSet.new(ordered, & &1.key)
+    ordered ++ for(item <- items, item.key not in seen, do: Map.put(item, :hidden, false))
   end
 
   # Literal class strings: Tailwind cannot see interpolated ones.
@@ -646,7 +798,7 @@ defmodule QuantumBillingWeb.Layouts do
       %{
         key: :settings,
         label: "Settings",
-        path: ~p"/settings",
+        path: ~p"/settings/company",
         icon: "hero-cog-6-tooth",
         color: "text-rose-600 dark:text-rose-400"
       }

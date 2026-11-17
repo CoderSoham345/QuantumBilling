@@ -291,6 +291,9 @@ defmodule QuantumBillingWeb.UserAuth do
     * `:require_onboarded` - sends users who have not onboarded to /onboarding.
     * `:require_business` - sends users without a business to the picker.
     * `:require_owner` - sends staff to the dashboard.
+    * `:require_admin` - answers 404 to anyone but a super admin.
+    * `:check_maintenance` - sends everyone but super admins to /maintenance
+      while maintenance mode is on.
   """
   def on_mount(:mount_current_scope, _params, session, socket) do
     {:cont, mount_current_scope(socket, session)}
@@ -382,6 +385,25 @@ defmodule QuantumBillingWeb.UserAuth do
       {:halt, socket}
     end
   end
+
+  def on_mount(:require_admin, _params, session, socket) do
+    socket = mount_current_scope(socket, session)
+
+    if Scope.admin?(socket.assigns.current_scope),
+      do: {:cont, socket},
+      else: raise(QuantumBillingWeb.NotFoundError)
+  end
+
+  def on_mount(:check_maintenance, _params, session, socket) do
+    socket = mount_current_scope(socket, session)
+
+    if under_maintenance?(socket.assigns.current_scope),
+      do: {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/maintenance")},
+      else: {:cont, socket}
+  end
+
+  defp under_maintenance?(scope),
+    do: not Scope.admin?(scope) and InstallationSettings.maintenance?()
 
   # Same stamp and setting as the plug.
   defp session_expired?(session) do
@@ -490,6 +512,28 @@ defmodule QuantumBillingWeb.UserAuth do
       |> put_flash(:error, @owner_only_message)
       |> redirect(to: ~p"/dashboard")
       |> halt()
+    end
+  end
+
+  @doc """
+  Plug for the super admin's routes. Anyone else gets a 404, so the pages
+  cannot be discovered. The `:require_admin` on_mount hook covers LiveViews.
+  """
+  def require_admin(conn, _opts) do
+    if Scope.admin?(conn.assigns[:current_scope]),
+      do: conn,
+      else: raise(QuantumBillingWeb.NotFoundError)
+  end
+
+  @doc """
+  Plug for business pages: while maintenance mode is on, everyone but super
+  admins is sent to /maintenance.
+  """
+  def check_maintenance(conn, _opts) do
+    if under_maintenance?(conn.assigns[:current_scope]) do
+      conn |> redirect(to: ~p"/maintenance") |> halt()
+    else
+      conn
     end
   end
 

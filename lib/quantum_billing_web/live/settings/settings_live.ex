@@ -392,6 +392,34 @@ defmodule QuantumBillingWeb.SettingsLive do
     end
   end
 
+  # Owner only; the business list is where it can be restored.
+  def handle_event("archive_business", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    if Scope.owner?(scope) do
+      case QuantumBilling.Businesses.archive(scope.user, scope.business) do
+        {:ok, archived} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "#{archived.name} is archived. Its records are kept.")
+           |> redirect(to: ~p"/businesses")}
+
+        {:error, :first_business} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The first business cannot be archived: links and jobs from before there were several lead there."
+           )}
+
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "That business could not be archived.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Only owners can archive the business.")}
+    end
+  end
+
   def handle_event("cancel_logo", %{"ref" => ref}, socket) do
     {:noreply, cancel_upload(socket, :logo, ref)}
   end
@@ -838,6 +866,7 @@ defmodule QuantumBillingWeb.SettingsLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
+      sidebar={:settings}
       active_nav={@active_nav}
       active_sub={@section}
       notifications={@notifications}
@@ -846,7 +875,7 @@ defmodule QuantumBillingWeb.SettingsLive do
       <%!-- The profile is a sheet centred on the page; the rest use the full width. --%>
       <div
         id="settings-page"
-        class={["flex flex-1 flex-col", @section == :company && "mx-auto w-full max-w-5xl"]}
+        class={["flex flex-1 flex-col", @section == :company && "mx-auto w-full max-w-2xl"]}
       >
         <.header>
           {section(@section).title}
@@ -1129,204 +1158,122 @@ defmodule QuantumBillingWeb.SettingsLive do
 
   # Read-only: staff see it too. Each edit lives in the section that owns it.
   defp render_panel(%{section: :company} = assigns) do
-    assigns = assign(assigns, :completeness, profile_completeness(assigns.organization))
+    assigns =
+      assigns
+      |> assign(:name, company_display_name(assigns))
+      |> assign(:vat?, Organization.vat?(assigns.organization))
+      |> assign(:owner?, Scope.owner?(assigns.current_scope))
 
     ~H"""
-    <div id="company-profile" class="-m-4 flex flex-1 flex-col overflow-hidden rounded-box">
-      <%!-- The letterhead: how the company heads its invoices. --%>
-      <section id="company-letterhead" class="relative px-5 pt-7 pb-5 sm:px-7">
-        <span
-          class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400 dark:from-amber-500 dark:via-amber-400 dark:to-orange-400"
-          aria-hidden="true"
-        ></span>
-
-        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div class="flex min-w-0 items-start gap-4">
-            <span class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-sm transition-transform duration-200 hover:-rotate-2 sm:size-20">
-              <%= if @organization.doc_logo_path do %>
-                <img
-                  id="company-logo"
-                  src={@logo_src}
-                  alt={"#{company_display_name(assigns)} logo"}
-                  class="max-h-full max-w-full object-contain p-1.5"
-                />
-              <% else %>
-                <span
-                  id="company-initials"
-                  class="flex size-full items-center justify-center bg-amber-100 text-xl font-semibold text-amber-800 sm:text-2xl dark:bg-amber-300/15 dark:text-amber-200"
-                >
-                  {company_initials(company_display_name(assigns))}
-                </span>
-              <% end %>
+    <div id="company-profile" class="flex flex-col divide-y divide-base-300">
+      <section id="company-identity" class="flex flex-wrap items-center gap-4 pb-5">
+        <span class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-100">
+          <%= if @organization.doc_logo_path do %>
+            <img
+              id="company-logo"
+              src={@logo_src}
+              alt={"#{@name} logo"}
+              class="max-h-full max-w-full object-contain p-1.5"
+            />
+          <% else %>
+            <span
+              id="company-initials"
+              class="flex size-full items-center justify-center bg-base-200 text-lg font-semibold text-base-content/70"
+            >
+              {company_initials(@name)}
             </span>
+          <% end %>
+        </span>
 
-            <div class="min-w-0">
-              <p class="text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-base-content/45">
-                Billed by
-              </p>
-              <h2
-                id="company-name"
-                class="mt-0.5 truncate text-xl font-semibold tracking-tight sm:text-2xl"
-              >
-                {company_display_name(assigns)}
-              </h2>
-              <p
-                :if={present?(@organization.trade_name)}
-                class="truncate text-sm text-base-content/60"
-              >
-                Trading as {@organization.trade_name}
-              </p>
-              <p class="mt-1.5 max-w-prose text-sm text-base-content/70">
-                {company_address(@organization)}
-              </p>
-
-              <p
-                id="company-registration"
-                class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60"
-              >
-                <span>
-                  GSTIN
-                  <span class={[
-                    "font-mono",
-                    if(present?(@organization.gstin),
-                      do: "text-base-content",
-                      else: "italic text-base-content/40"
-                    )
-                  ]}>
-                    {if present?(@organization.gstin), do: @organization.gstin, else: "not added"}
-                  </span>
-                </span>
-                <span :if={present?(@organization.state)} aria-hidden="true">·</span>
-                <span :if={present?(@organization.state)} class="text-base-content">
-                  {@organization.state}
-                </span>
-                <span :if={present?(@organization.pan)} aria-hidden="true">·</span>
-                <span :if={present?(@organization.pan)}>
-                  PAN <span class="font-mono text-base-content">{@organization.pan}</span>
-                </span>
-              </p>
-            </div>
-          </div>
-
-          <div class="flex flex-wrap gap-2 lg:justify-end">
-            <.link
-              navigate={~p"/settings/general"}
-              id="company-edit-details"
-              class={secondary_button_class()}
-            >
-              <.icon name="hero-pencil-square" class="size-4" /> Edit details
-            </.link>
-            <.link
-              navigate={~p"/settings/customization"}
-              id="company-edit-designs"
-              class={secondary_button_class()}
-            >
-              <.icon name="hero-paint-brush" class="size-4" /> Logo &amp; designs
-            </.link>
-            <.link
-              :if={Scope.owner?(@current_scope)}
-              navigate={~p"/settings/team"}
-              id="company-team"
-              class={secondary_button_class()}
-            >
-              <.icon name="hero-user-group" class="size-4" /> Team
-            </.link>
-          </div>
+        <div class="min-w-0 flex-1">
+          <h2 id="company-name" class="truncate text-base font-semibold tracking-tight">
+            {@name}
+          </h2>
+          <p class="truncate text-sm text-base-content/55">
+            {if present?(@organization.trade_name),
+              do: "Trading as #{@organization.trade_name}",
+              else: "Shown at the top of every invoice"}
+          </p>
         </div>
+
+        <.link
+          navigate={~p"/settings/customization"}
+          id="company-edit-designs"
+          class={secondary_button_class()}
+        >
+          <.icon name="hero-photo" class="size-4" />
+          {if @organization.doc_logo_path, do: "Change logo", else: "Add logo"}
+        </.link>
       </section>
 
-      <%!-- How much of the letterhead is filled in, and what to add next. --%>
-      <div
-        id="company-completeness"
-        class="flex flex-col gap-2 border-y border-dashed border-base-300 bg-base-200/40 px-5 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-7"
-      >
-        <div class="flex items-center gap-3 sm:w-72">
-          <span class="text-xs font-medium text-base-content/60">Profile</span>
-          <div
-            class="h-1.5 flex-1 overflow-hidden rounded-full bg-base-300"
-            role="progressbar"
-            aria-label="Company profile completeness"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow={@completeness.percent}
+      <section id="company-details" class="py-5">
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <h3 class="text-sm font-semibold">Details</h3>
+          <.link
+            navigate={~p"/settings/general"}
+            id="company-edit-details"
+            class="inline-flex items-center gap-1 text-sm text-base-content/60 transition-colors hover:text-base-content"
           >
-            <div
-              class={[
-                "h-full rounded-full transition-[width] duration-500 ease-out",
-                if(@completeness.percent == 100,
-                  do: "bg-emerald-500 dark:bg-emerald-400",
-                  else: "bg-amber-500 dark:bg-amber-400"
-                )
-              ]}
-              style={"width: #{@completeness.percent}%"}
-            >
-            </div>
-          </div>
-          <span class="w-10 text-right text-xs font-semibold tabular-nums">
-            {@completeness.percent}%
-          </span>
+            <.icon name="hero-pencil-square" class="size-4" /> Edit
+          </.link>
         </div>
 
-        <%= case @completeness.next do %>
-          <% nil -> %>
-            <p class="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
-              <.icon name="hero-check-badge" class="size-4" />
-              Everything your invoices need is in place.
-            </p>
-          <% {label, path} -> %>
+        <dl class="divide-y divide-base-200">
+          <.company_row label="Legal name">{blank_dash(@organization.company_name)}</.company_row>
+          <.company_row label={if(@vat?, do: "VAT number", else: "GSTIN")} mono>
+            {blank_dash(@organization.gstin)}
+          </.company_row>
+          <.company_row :if={not @vat?} label="PAN" mono>
+            {blank_dash(@organization.pan)}
+          </.company_row>
+          <.company_row :if={not @vat?} label="State">
+            {blank_dash(@organization.state)}
+          </.company_row>
+          <.company_row label="Address">{company_address(@organization)}</.company_row>
+          <.company_row label="Email">{blank_dash(@organization.email)}</.company_row>
+          <.company_row label="Phone">{blank_dash(@organization.phone)}</.company_row>
+          <.company_row label="Financial year">
+            {blank_dash(@organization.financial_year)}
+          </.company_row>
+          <.company_row label="Currency">{blank_dash(@organization.currency)}</.company_row>
+          <.company_row label="Team">
             <.link
-              navigate={path}
-              id="company-next-step"
-              class="group inline-flex items-center gap-1 text-xs font-medium text-base-content/70 transition-colors hover:text-base-content"
+              :if={@owner?}
+              navigate={~p"/settings/team"}
+              id="company-team"
+              class="underline decoration-base-content/20 underline-offset-2 transition-colors hover:decoration-base-content"
             >
-              Next: add your {label}
-              <.icon
-                name="hero-arrow-right"
-                class="size-3.5 transition-transform group-hover:translate-x-0.5"
-              />
-            </.link>
-        <% end %>
-      </div>
-
-      <div class="flex-1 bg-base-200/40 p-4 sm:p-5">
-        <div id="company-facts" class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <.company_card icon="hero-receipt-percent" title="Tax registration">
-            <.company_row label="GSTIN" mono>{blank_dash(@organization.gstin)}</.company_row>
-            <.company_row label="PAN" mono>{blank_dash(@organization.pan)}</.company_row>
-            <.company_row label="State">{blank_dash(@organization.state)}</.company_row>
-          </.company_card>
-
-          <.company_card icon="hero-envelope" title="Contact">
-            <.company_row label="Email">{blank_dash(@organization.email)}</.company_row>
-            <.company_row label="Phone">{blank_dash(@organization.phone)}</.company_row>
-            <.company_row label="Address">{company_address(@organization)}</.company_row>
-          </.company_card>
-
-          <.company_card icon="hero-calculator" title="Accounting">
-            <.company_row label="Financial year">
-              {blank_dash(@organization.financial_year)}
-            </.company_row>
-            <.company_row label="Currency">{blank_dash(@organization.currency)}</.company_row>
-            <.company_row label="Team">
               <span id="company-member-count">
                 {@member_count} {if @member_count == 1, do: "member", else: "members"}
               </span>
-            </.company_row>
-            <.company_row label="Your role">
-              {if Scope.owner?(@current_scope), do: "Owner", else: "Staff"}
-            </.company_row>
-          </.company_card>
-        </div>
+            </.link>
+            <span :if={not @owner?} id="company-member-count">
+              {@member_count} {if @member_count == 1, do: "member", else: "members"}
+            </span>
+          </.company_row>
+          <.company_row label="Your role">{if @owner?, do: "Owner", else: "Staff"}</.company_row>
+        </dl>
+      </section>
 
-        <p
-          :if={not present?(@organization.gstin) and Scope.owner?(@current_scope)}
-          id="company-incomplete"
-          class="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-        >
-          <.icon name="hero-light-bulb" class="size-4 shrink-0" />
-          Add your GSTIN in General settings so it appears on your invoices.
-        </p>
-      </div>
+      <section :if={@owner?} id="company-danger" class="pt-5">
+        <div class="flex flex-col gap-3 rounded-box border border-error/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-error">Archive business</h3>
+            <p class="mt-0.5 text-sm text-base-content/60">
+              Hides it from everyone. Its records are kept and you can restore it from the business list.
+            </p>
+          </div>
+          <button
+            type="button"
+            id="company-archive"
+            phx-click="archive_business"
+            data-confirm={"Archive #{@name}? Members lose access until an owner restores it."}
+            class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-field border border-error/50 px-3 py-1.5 text-sm font-medium text-error transition-colors hover:bg-error hover:text-error-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+          >
+            <.icon name="hero-archive-box" class="size-4" /> Archive
+          </button>
+        </div>
+      </section>
     </div>
     """
   end
@@ -2273,26 +2220,6 @@ defmodule QuantumBillingWeb.SettingsLive do
 
   # Company profile helpers
 
-  attr :icon, :string, required: true
-  attr :title, :string, required: true
-  slot :inner_block, required: true
-
-  defp company_card(assigns) do
-    ~H"""
-    <section class="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <h3 class="flex items-center gap-2 text-sm font-semibold">
-        <span class="flex size-7 items-center justify-center rounded-lg bg-base-200 text-base-content/60">
-          <.icon name={@icon} class="size-4" />
-        </span>
-        {@title}
-      </h3>
-      <dl class="mt-3 divide-y divide-base-200">
-        {render_slot(@inner_block)}
-      </dl>
-    </section>
-    """
-  end
-
   attr :label, :string, required: true
   attr :mono, :boolean, default: false
   slot :inner_block, required: true
@@ -2306,32 +2233,6 @@ defmodule QuantumBillingWeb.SettingsLive do
       </dd>
     </div>
     """
-  end
-
-  # What a complete letterhead has, in the order worth adding it.
-  defp profile_completeness(organization) do
-    general = ~p"/settings/general"
-
-    checks = [
-      {"company name", present?(organization.company_name), general},
-      {"GSTIN", present?(organization.gstin), general},
-      {"PAN", present?(organization.pan), general},
-      {"address", present?(organization.address), general},
-      {"state", present?(organization.state), general},
-      {"email", present?(organization.email), general},
-      {"phone number", present?(organization.phone), general},
-      {"logo", present?(organization.doc_logo_path), ~p"/settings/customization"}
-    ]
-
-    done = Enum.count(checks, fn {_label, done?, _path} -> done? end)
-
-    next =
-      Enum.find_value(checks, fn
-        {label, false, path} -> {label, path}
-        _done -> nil
-      end)
-
-    %{percent: div(done * 100, length(checks)), next: next}
   end
 
   defp company_display_name(%{organization: organization, current_scope: scope}) do

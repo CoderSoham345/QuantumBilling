@@ -172,6 +172,7 @@ defmodule QuantumBillingWeb.SettingsLive.Team do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
+      sidebar={:settings}
       active_nav={@active_nav}
       active_sub={:team}
       notifications={@notifications}

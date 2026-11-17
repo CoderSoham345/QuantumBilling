@@ -48,34 +48,30 @@ defmodule QuantumBillingWeb.SettingsLiveTest do
       assert has_element?(view, ~s(header button[type="submit"][form="settings-form"]))
     end
 
-    # Each section is a full navigation, so the list renders unfolded.
-    test "the sections stay unfolded across the settings panels", %{conn: conn} do
-      for path <- [~p"/settings", ~p"/settings/tax", ~p"/settings/customization"] do
+    # Settings pages swap the main nav for their own menu, with a way back.
+    test "settings pages show the settings sidebar with Back", %{conn: conn} do
+      for path <- [~p"/settings", ~p"/settings/tax", ~p"/users/settings", ~p"/users/profile"] do
         {:ok, view, _html} = live(conn, path)
 
-        assert has_element?(view, "#settings-sections-toggle[checked]"),
-               "expected the settings sections open on #{path}"
+        assert has_element?(view, "#settings-back"), "expected Back on #{path}"
+        assert has_element?(view, "#settings-link-tax"), "expected the settings menu on #{path}"
+        refute has_element?(view, "#nav-invoices"), "expected no main nav on #{path}"
       end
     end
 
-    # Driven off the open section, not the nav item.
-    test "and stay folded everywhere else", %{conn: conn} do
-      for path <- [~p"/users/settings", ~p"/invoices"] do
-        {:ok, view, _html} = live(conn, path)
-
-        refute has_element?(view, "#settings-sections-toggle[checked]"),
-               "expected the settings sections folded on #{path}"
-
-        assert has_element?(view, ~s(a[href="/settings/tax"]))
-      end
-    end
-
-    test "the chevron opens them without a round trip", %{conn: conn} do
+    test "the main sidebar has no settings dropdown, only a Settings link", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/invoices")
 
-      # A label driving a checkbox: no phx-click.
-      assert has_element?(view, ~s(label[for="settings-sections-toggle"]))
-      refute has_element?(view, ~s(a[href="/settings"][phx-click]))
+      refute has_element?(view, "#settings-back")
+      refute has_element?(view, "#settings-link-tax")
+      assert has_element?(view, "#nav-settings")
+    end
+
+    test "the active settings item is marked", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/tax")
+
+      assert has_element?(view, ~s(#settings-link-tax[aria-current="page"]))
+      refute has_element?(view, ~s(#settings-link-general[aria-current="page"]))
     end
 
     # Collapsing leaves an icon rail: the buttons are client-side only, and
@@ -115,11 +111,10 @@ defmodule QuantumBillingWeb.SettingsLiveTest do
     test "the Company Profile is read-only and shows the company's facts", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/company")
 
-      assert has_element?(view, "#company-name")
-      assert has_element?(view, "#company-facts")
+      assert has_element?(view, "#company-identity #company-name")
+      assert has_element?(view, "#company-details")
       assert has_element?(view, "#company-member-count")
-      assert has_element?(view, "#company-letterhead #company-registration")
-      assert has_element?(view, "#company-completeness [role='progressbar']")
+      assert has_element?(view, "#company-danger #company-archive[data-confirm]")
       assert has_element?(view, "#company-edit-details[href='/settings/general']")
       assert has_element?(view, "#company-edit-designs[href='/settings/customization']")
       refute has_element?(view, "#settings-form")

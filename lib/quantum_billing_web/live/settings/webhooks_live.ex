@@ -174,6 +174,7 @@ defmodule QuantumBillingWeb.SettingsLive.Webhooks do
       flash={@flash}
       current_scope={@current_scope}
       active_nav={@active_nav}
+      sidebar={:settings}
       active_sub={:webhooks}
     >
       <.header>

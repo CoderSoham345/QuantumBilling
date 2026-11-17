@@ -265,6 +265,8 @@ defmodule QuantumBillingWeb.UserLive.Settings do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
+      sidebar={:settings}
+      active_sub={:account}
       active_nav={@active_nav}
       notifications={@notifications}
       unread_count={@unread_count}

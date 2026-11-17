@@ -159,8 +159,8 @@ defmodule QuantumBillingWeb.BinLiveTest do
     {:ok, view, _html} = live(conn, ~p"/bin")
 
     assert has_element?(view, ~s|nav a[href="/bin"]|, "Bin")
-    assert has_element?(view, ~s|nav li:has(a[href="/bin"]) + li a[href="/settings"]|)
-    refute has_element?(view, ~s|nav li:has(a[href="/settings"]) + li a[href="/bin"]|)
+    assert has_element?(view, ~s|nav li:has(a[href="/bin"]) + li a[href="/settings/company"]|)
+    refute has_element?(view, ~s|nav li:has(a[href="/settings/company"]) + li a[href="/bin"]|)
   end
 
   describe "staff" do

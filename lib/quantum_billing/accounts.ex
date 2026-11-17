@@ -24,6 +24,16 @@ defmodule QuantumBilling.Accounts do
     if User.valid_password?(user, password), do: user
   end
 
+  @doc """
+  Makes `user` a super admin of the installation, or stops them being one.
+  Only `mix qb.admin.grant` calls this; no page does.
+  """
+  def set_admin(%User{} = user, admin?) when is_boolean(admin?) do
+    user
+    |> Ecto.Changeset.change(is_admin: admin?)
+    |> Repo.update()
+  end
+
   @doc "Gets a user by id. Raises if missing."
   def get_user!(id), do: Repo.get!(User, id)
 
