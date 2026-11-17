@@ -463,8 +463,6 @@ defmodule QuantumBillingWeb.Layouts do
   attr :scope, :any, required: true
   attr :active, :atom, default: nil
 
-  # The settings menu: account, business and installation pages in one column,
-  # with Back to the app at the top.
   defp settings_nav(assigns) do
     assigns = assign(assigns, :groups, settings_groups(assigns.scope))
 
@@ -572,7 +570,6 @@ defmodule QuantumBillingWeb.Layouts do
 
   attr :items, :list, required: true
 
-  # The super admin's editor: the main menu, each row with move and show/hide controls.
   defp layout_editor(assigns) do
     assigns = assign(assigns, :last, length(assigns.items) - 1)
 
@@ -807,7 +804,8 @@ defmodule QuantumBillingWeb.Layouts do
 
   @doc """
   Renders the shell for one-step-at-a-time screens: the business picker, its
-  success screen and onboarding. No sidebar; a progress bar and a `:footer` slot.
+  success screen and onboarding. No sidebar; a progress bar when `steps` is
+  set, and a `:footer` slot.
   """
   attr :flash, :map, required: true
   attr :current_scope, :map, default: nil

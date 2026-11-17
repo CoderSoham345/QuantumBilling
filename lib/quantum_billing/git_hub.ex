@@ -22,9 +22,6 @@ defmodule QuantumBilling.GitHub do
   # Larger avatars are dropped rather than inlined into the page.
   @max_avatar_bytes 40_000
 
-  @doc "The `owner/name` of the project's repository."
-  def repo, do: @repo
-
   @doc "The repository's web address."
   def repo_url, do: "https://github.com/#{@repo}"
 
@@ -64,12 +61,6 @@ defmodule QuantumBilling.GitHub do
         error -> error
       end
     end)
-  end
-
-  @doc "Forgets the cached results."
-  def clear_cache do
-    for key <- [:contributors, :latest_release], do: :persistent_term.erase({__MODULE__, key})
-    :ok
   end
 
   defp contributor(%{"login" => login} = entry) do

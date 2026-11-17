@@ -90,8 +90,6 @@ defmodule QuantumBillingWeb.AdminLive do
     |> stream(:config_vars, vars, reset: true)
   end
 
-  ## Events
-
   @impl true
   def handle_event("search_users", %{"users" => %{"q" => q}}, socket) do
     {:noreply,
@@ -184,8 +182,6 @@ defmodule QuantumBillingWeb.AdminLive do
     {:noreply, push_navigate(socket, to: ~p"/admin")}
   end
 
-  ## Render
-
   @impl true
   def render(%{live_action: :layout} = assigns) do
     ~H"""
@@ -262,8 +258,6 @@ defmodule QuantumBillingWeb.AdminLive do
   defp tab_path(:general), do: ~p"/admin"
   defp tab_path(:config), do: ~p"/admin/config"
   defp tab_path(:health), do: ~p"/admin/health"
-
-  ## General
 
   defp general(assigns) do
     ~H"""
@@ -410,8 +404,6 @@ defmodule QuantumBillingWeb.AdminLive do
     """
   end
 
-  ## Config
-
   defp config(assigns) do
     ~H"""
     <section id="admin-config">
@@ -458,8 +450,6 @@ defmodule QuantumBillingWeb.AdminLive do
     </section>
     """
   end
-
-  ## Health
 
   defp health(assigns) do
     ~H"""
@@ -567,8 +557,6 @@ defmodule QuantumBillingWeb.AdminLive do
   defp status_label(:ok), do: "Operational"
   defp status_label(:degraded), do: "Degraded"
   defp status_label(:off), do: "Not configured"
-
-  ## Pieces
 
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil

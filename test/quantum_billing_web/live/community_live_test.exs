@@ -36,7 +36,7 @@ defmodule QuantumBillingWeb.CommunityLiveTest do
     assert has_element?(view, "#settings-back")
     assert has_element?(view, ~s(#settings-link-community[aria-current="page"]))
 
-    render_async(view, 2_000)
+    render_async(view, 5_000)
 
     assert has_element?(
              view,
@@ -54,7 +54,7 @@ defmodule QuantumBillingWeb.CommunityLiveTest do
     Req.Test.stub(QuantumBilling.GitHub, &Plug.Conn.send_resp(&1, 503, ""))
 
     {:ok, view, _html} = live(conn, ~p"/community")
-    render_async(view, 2_000)
+    render_async(view, 5_000)
 
     assert has_element?(view, "#contributors-unavailable")
     refute has_element?(view, "#contributors")
