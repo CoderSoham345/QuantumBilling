@@ -382,10 +382,18 @@ or `demo` (made by the sandbox, never filed with the government). Needs
 `type` is `credit` or `debit`; amounts are minor units of the invoice's
 currency, and any left out default to the invoice's own. A note follows its
 invoice's tax regime; on a VAT invoice `tax_total` is VAT, spread across the
-invoice's rates in proportion. A note reads back as `id`, `number`, `type`, `reason`,
+invoice's rates in proportion. A note reads back as `id`, `number`, `date`, `type`, `reason`,
 `status`, `amounts` (`subtotal`, `tax_total`, `grand_total`), `invoice`
 (`{id, number}`), `client_id`, `created_at`, `updated_at`. Notes on an invoice
 in the Bin are hidden.
+
+`number` comes from the business's credit-note (`CN-0001`…) or debit-note
+(`DN-0001`…) series, set in Settings → Invoice: at most 16 letters, digits, `-`
+and `/`. The API does not accept a number. Notes raised before these series
+existed keep their older, longer numbers. `date` (`YYYY-MM-DD`) is the day the note was raised
+in the business's timezone; GSTR-1 reports the note in that date's month. A
+request is refused with `422` if the business's series would produce a number
+over 16 characters.
 
 ## OpenAPI
 

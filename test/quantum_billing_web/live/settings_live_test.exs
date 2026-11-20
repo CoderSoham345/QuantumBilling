@@ -283,6 +283,48 @@ defmodule QuantumBillingWeb.SettingsLiveTest do
       assert html =~ "GST-00042"
     end
 
+    test "the invoice panel saves the note series and previews their numbers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/invoice")
+
+      assert has_element?(view, "#settings-note-numbering")
+      assert view |> element("#settings-number-preview") |> render() =~ "CN-0001"
+
+      html =
+        view
+        |> form("#settings-form", %{
+          "organization" => %{
+            "credit_note_prefix" => "CR/26",
+            "credit_note_next_number" => "7",
+            "debit_note_prefix" => "DR",
+            "debit_note_next_number" => "3"
+          }
+        })
+        |> render_change()
+
+      assert html =~ "CR/26-0007"
+      assert html =~ "DR-0003"
+
+      view |> form("#settings-form") |> render_submit()
+
+      organization = Settings.get_organization()
+      assert organization.credit_note_prefix == "CR/26"
+      assert organization.credit_note_next_number == 7
+      assert organization.debit_note_prefix == "DR"
+      assert organization.debit_note_next_number == 3
+    end
+
+    test "the invoice panel refuses numbers longer than GST allows", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/invoice")
+
+      html =
+        view
+        |> form("#settings-form", %{"organization" => %{"invoice_prefix" => "QUANTUMBILLS"}})
+        |> render_submit()
+
+      assert html =~ "longer than 16 characters"
+      assert Settings.get_organization().invoice_prefix == "INV"
+    end
+
     test "the rate select offers only the statutory slabs", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/tax")
 

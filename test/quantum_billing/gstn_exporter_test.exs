@@ -1,7 +1,9 @@
 defmodule QuantumBilling.GSTNExporterTest do
   use QuantumBilling.DataCase, async: true
 
+  alias QuantumBilling.Clients.Client
   alias QuantumBilling.Compliance.GSTNExporter
+  alias QuantumBilling.CreditNotes.CreditNote
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Invoices.InvoiceItem
 
@@ -190,6 +192,37 @@ defmodule QuantumBilling.GSTNExporterTest do
 
       assert [%{"typ" => "OE", "pos" => "27", "txval" => 1_000.0}] = json["b2cs"]
       assert json["b2cl"] == []
+    end
+
+    # 00:30 IST on 1 December is 19:00 UTC on 30 November: the note belongs to
+    # December's return, under its own number and date.
+    test "reports a note in the month of its IST date, not its UTC save time" do
+      client = Repo.insert!(%Client{name: "Delta Retailers", email: "delta@example.com"})
+
+      invoice =
+        invoice(%{invoice_number: "INV-0042", invoice_date: ~D[2026-11-20], client_id: client.id})
+
+      Repo.insert!(%CreditNote{
+        note_number: "CN-0001",
+        note_date: ~D[2026-12-01],
+        note_type: "Credit",
+        reason: "Rate revised",
+        grand_total: 118_000,
+        invoice_id: invoice.id,
+        client_id: client.id,
+        inserted_at: ~U[2026-11-30 19:00:00Z],
+        updated_at: ~U[2026-11-30 19:00:00Z]
+      })
+
+      assert {:ok, december} = GSTNExporter.generate_gstr1_json("122026")
+
+      assert [%{"ctin" => "27CCCDE1234F1Z5", "nt" => [note]}] = december["cdnr"]
+      assert note["nt_num"] == "CN-0001"
+      assert note["nt_dt"] == "01-12-2026"
+      assert note["inum"] == "INV-0042"
+
+      assert {:ok, november} = GSTNExporter.generate_gstr1_json("112026")
+      assert november["cdnr"] == []
     end
 
     test "is empty, not broken, for a month with nothing in it" do

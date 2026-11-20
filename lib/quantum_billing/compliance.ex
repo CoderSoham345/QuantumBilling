@@ -505,6 +505,23 @@ defmodule QuantumBilling.Compliance do
     remind_tasks(NaiveDateTime.to_date(local), NaiveDateTime.to_time(local))
   end
 
+  @doc """
+  Whether `number` may number an invoice, credit note or debit note under
+  Rule 46(b) and Rule 53 of the CGST Rules, as GSTR-1 and the e-invoice portal
+  check it: at most 16 characters, only letters, digits, `-` and `/`, and not
+  starting with `-`, `/` or `0`.
+  """
+  def document_number_valid?(number) when is_binary(number) do
+    String.length(number) <= 16 and number =~ ~r/^[A-Za-z1-9][A-Za-z0-9\/-]*$/
+  end
+
+  def document_number_valid?(_number), do: false
+
+  @doc "Today's date where the business is, at `now`."
+  def local_date(%DateTime{} = now \\ DateTime.utc_now(), timezone \\ nil) do
+    now |> local_time(timezone) |> NaiveDateTime.to_date()
+  end
+
   @doc "`now` as wall-clock time where the business is."
   def local_time(%DateTime{} = now, timezone \\ nil) do
     timezone = timezone || organization_timezone()

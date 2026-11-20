@@ -57,6 +57,12 @@ defmodule QuantumBilling.Settings.Organization do
     field :invoice_due_days, :integer, default: 30
     field :invoice_terms, :string
 
+    # Each note type runs its own series (Rule 53), padded like invoices.
+    field :credit_note_prefix, :string, default: "CN"
+    field :credit_note_next_number, :integer, default: 1
+    field :debit_note_prefix, :string, default: "DN"
+    field :debit_note_next_number, :integer, default: 1
+
     field :ewb_transport_mode, :string, default: "Road"
     field :ewb_transporter_id, :string
     field :ewb_threshold_value, Paise, default: 5_000_000
@@ -133,7 +139,15 @@ defmodule QuantumBilling.Settings.Organization do
               state currency financial_year timezone date_format)a
 
   @invoice ~w(invoice_prefix invoice_next_number invoice_number_padding
-              invoice_due_days invoice_terms)a
+              invoice_due_days invoice_terms credit_note_prefix credit_note_next_number
+              debit_note_prefix debit_note_next_number)a
+
+  # Each numbering series as {prefix field, next number field}.
+  @series [
+    {:invoice_prefix, :invoice_next_number},
+    {:credit_note_prefix, :credit_note_next_number},
+    {:debit_note_prefix, :debit_note_next_number}
+  ]
 
   @bank ~w(bank_account_name bank_name bank_account_number bank_ifsc bank_branch)a
 
@@ -193,14 +207,9 @@ defmodule QuantumBilling.Settings.Organization do
     |> validate_length(:bank_account_name, max: 120)
     |> validate_length(:bank_name, max: 120)
     |> validate_length(:bank_branch, max: 120)
-    |> validate_required([:invoice_prefix, :invoice_next_number])
-    |> validate_format(:invoice_prefix, ~r/^[A-Za-z0-9\-\/]+$/,
-      message: "may only contain letters, numbers, dashes and slashes"
-    )
-    |> validate_length(:invoice_prefix, max: 12)
-    |> validate_number(:invoice_next_number, greater_than: 0)
     |> validate_number(:invoice_number_padding, greater_than_or_equal_to: 0, less_than: 12)
     |> validate_number(:invoice_due_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
+    |> validate_series()
   end
 
   def changeset(organization, attrs, :e_way_bill) do
@@ -325,6 +334,54 @@ defmodule QuantumBilling.Settings.Organization do
   end
 
   # The common mistake is entering an email address.
+  @doc """
+  A document number from its series, e.g. `document_number("CN", 7, 4)` is
+  `"CN-0007"`.
+  """
+  def document_number(prefix, number, padding) do
+    "#{prefix}-#{number |> to_string() |> String.pad_leading(padding || 0, "0")}"
+  end
+
+  # Every series must give numbers GST accepts (Rule 46(b), Rule 53). Only the
+  # next number is checked: at the usual padding it takes thousands more
+  # documents to grow a digit, and changing the prefix starts a new series.
+  defp validate_series(changeset) do
+    Enum.reduce(@series, changeset, fn {prefix, next}, changeset ->
+      changeset
+      |> validate_required([prefix, next])
+      |> validate_format(prefix, ~r/^[A-Za-z1-9][A-Za-z0-9\/-]*$/,
+        message: "must start with a letter or 1-9 and use only letters, numbers, - and /"
+      )
+      |> validate_length(prefix, max: 12)
+      |> validate_number(next, greater_than: 0)
+      |> validate_series_length(prefix, next)
+    end)
+  end
+
+  defp validate_series_length(changeset, prefix, next) do
+    if Keyword.has_key?(changeset.errors, prefix) or Keyword.has_key?(changeset.errors, next) or
+         Keyword.has_key?(changeset.errors, :invoice_number_padding) do
+      changeset
+    else
+      number =
+        document_number(
+          get_field(changeset, prefix),
+          get_field(changeset, next),
+          get_field(changeset, :invoice_number_padding)
+        )
+
+      if QuantumBilling.Compliance.document_number_valid?(number) do
+        changeset
+      else
+        add_error(
+          changeset,
+          prefix,
+          "makes numbers longer than 16 characters (#{number}); shorten the prefix or padding"
+        )
+      end
+    end
+  end
+
   defp validate_upi_vpa(changeset) do
     case get_field(changeset, :upi_vpa) do
       blank when blank in [nil, ""] ->

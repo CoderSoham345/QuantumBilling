@@ -196,9 +196,16 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
          |> assign_cn_form(CreditNote.changeset(%CreditNote{}, %{}))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
+        # The number comes from Settings, not the form, so there is no field to highlight.
+        message =
+          if Keyword.has_key?(changeset.errors, :note_number),
+            do:
+              "The note number would break GST's 16-character limit. Shorten the note prefix or padding in Settings → Invoice.",
+            else: "Please fix the highlighted fields before issuing the note."
+
         {:noreply,
          socket
-         |> put_flash(:error, "Please fix the highlighted fields before issuing the note.")
+         |> put_flash(:error, message)
          |> assign_cn_form(changeset)}
 
       {:error, reason} ->

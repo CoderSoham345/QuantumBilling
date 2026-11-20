@@ -68,7 +68,9 @@ defmodule QuantumBilling.Backup do
                           upi_vpa upi_payee_name razorpay_key_id irp_username irp_client_id
                           audit_retention_days doc_logo_path bank_account_name bank_name
                           bank_account_number bank_ifsc bank_branch tax_regime vat_number
-                          vat_country prices_include_tax round_to_whole_units)a
+                          vat_country prices_include_tax round_to_whole_units
+                          credit_note_prefix credit_note_next_number debit_note_prefix
+                          debit_note_next_number)a
 
   @client_fields ~w(id client_type name display_name gstin pan legal_name business_type category
                     phone_country_code phone email billing_line1 billing_line2 billing_city
@@ -106,7 +108,7 @@ defmodule QuantumBilling.Backup do
                      items_json deleted_at custom_fields)a
 
   @credit_note_fields ~w(id note_number note_type invoice_id client_id reason subtotal tax_total
-                         grand_total status custom_fields tax_regime tax_breakdown)a
+                         grand_total status custom_fields tax_regime tax_breakdown note_date)a
 
   @tax_rate_fields ~w(id name category rate_bp exemption_reason is_default position archived_at
                       inserted_at)a
@@ -503,6 +505,11 @@ defmodule QuantumBilling.Backup do
     mock? = String.starts_with?(row[:signed_invoice] || "", "MOCK_SIGNED_JWT_")
     %{row | irn_mode: if(mock?, do: "demo", else: "live")}
   end
+
+  # Older backups hold no note date or save time, so a restored note is dated
+  # the day it is restored, as its save time has always been.
+  defp fill_portal_mode(CreditNote, %{note_date: nil} = row),
+    do: %{row | note_date: QuantumBilling.Compliance.local_date()}
 
   defp fill_portal_mode(_schema, row), do: row
 

@@ -583,7 +583,13 @@
             "type": "integer"
           },
           "number": {
-            "type": "string"
+            "type": "string",
+            "description": "From the business's credit (CN) or debit (DN) note series: at most 16 letters, digits, - and /, e.g. CN-0001."
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "The note's date where the business is (IST for an Indian business). GSTR-1 reports the note in this date's month."
           },
           "type": {
             "type": "string",

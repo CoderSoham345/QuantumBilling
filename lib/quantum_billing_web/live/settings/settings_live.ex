@@ -1156,6 +1156,9 @@ defmodule QuantumBillingWeb.SettingsLive do
     """
   end
 
+  # The settings as typed so far, for the live number preview.
+  defp numbering(form), do: Ecto.Changeset.apply_changes(form.source)
+
   # Read-only: staff see it too. Each edit lives in the section that owns it.
   defp render_panel(%{section: :company} = assigns) do
     assigns =
@@ -1356,15 +1359,71 @@ defmodule QuantumBillingWeb.SettingsLive do
           label="Number Padding"
           type="number"
           min="0"
-          hint="Leading zeros."
+          hint="Leading zeros. Notes use the same padding."
         />
       </div>
 
-      <div class="mt-4 rounded-field border border-base-300 bg-base-200 px-3.5 py-3">
-        <p class="text-xs text-base-content/60">Next invoice will be numbered</p>
+      <div id="settings-note-numbering" class="mt-4">
+        <p class="mb-2 text-xs font-medium text-base-content/70">Credit &amp; debit notes</p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <.field
+            field={f[:credit_note_prefix]}
+            label="Credit Note Prefix"
+            required
+            placeholder="CN"
+          />
+          <.field
+            field={f[:credit_note_next_number]}
+            label="Next Credit Note"
+            type="number"
+            required
+            min="1"
+          />
+          <.field
+            field={f[:debit_note_prefix]}
+            label="Debit Note Prefix"
+            required
+            placeholder="DN"
+          />
+          <.field
+            field={f[:debit_note_next_number]}
+            label="Next Debit Note"
+            type="number"
+            required
+            min="1"
+          />
+        </div>
+      </div>
 
-        <p class="mt-0.5 text-sm font-semibold tracking-tight">
-          {Settings.next_invoice_number(Ecto.Changeset.apply_changes(@form.source))}
+      <div
+        id="settings-number-preview"
+        class="mt-4 rounded-field border border-base-300 bg-base-200 px-3.5 py-3"
+      >
+        <p class="text-xs text-base-content/60">Next numbers</p>
+
+        <dl class="mt-1 grid grid-cols-3 gap-2 text-sm">
+          <div>
+            <dt class="text-xs text-base-content/50">Invoice</dt>
+            <dd class="font-semibold tracking-tight break-all">
+              {Settings.next_invoice_number(numbering(@form))}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-base-content/50">Credit note</dt>
+            <dd class="font-semibold tracking-tight break-all">
+              {Settings.next_note_number(numbering(@form), "Credit")}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-base-content/50">Debit note</dt>
+            <dd class="font-semibold tracking-tight break-all">
+              {Settings.next_note_number(numbering(@form), "Debit")}
+            </dd>
+          </div>
+        </dl>
+
+        <p class="mt-2 text-xs text-base-content/50">
+          GST allows up to 16 characters: letters, numbers, - and /.
         </p>
       </div>
 

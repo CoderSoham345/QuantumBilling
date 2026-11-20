@@ -109,10 +109,30 @@ defmodule QuantumBilling.Settings do
   The invoice number that would be issued next, e.g. `"INV-0001"`.
   """
   def next_invoice_number(%Organization{} = organization) do
-    prefix = organization.invoice_prefix || "INV"
-    number = organization.invoice_next_number || 1
-    padding = organization.invoice_number_padding || 0
+    Organization.document_number(
+      organization.invoice_prefix || "INV",
+      organization.invoice_next_number || 1,
+      organization.invoice_number_padding
+    )
+  end
 
-    "#{prefix}-#{number |> to_string() |> String.pad_leading(padding, "0")}"
+  @doc """
+  The number the next note of `note_type` (`"Credit"` or `"Debit"`) would get,
+  e.g. `"CN-0001"`. Notes use the invoice padding.
+  """
+  def next_note_number(%Organization{} = organization, "Credit") do
+    Organization.document_number(
+      organization.credit_note_prefix || "CN",
+      organization.credit_note_next_number || 1,
+      organization.invoice_number_padding
+    )
+  end
+
+  def next_note_number(%Organization{} = organization, "Debit") do
+    Organization.document_number(
+      organization.debit_note_prefix || "DN",
+      organization.debit_note_next_number || 1,
+      organization.invoice_number_padding
+    )
   end
 end

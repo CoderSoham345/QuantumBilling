@@ -232,7 +232,9 @@ Application-managed business configuration. A unique index on `singleton` is use
 | `date_format` | `varchar(255)` | Required; `DD MMM YYYY` |
 | `invoice_prefix` | `varchar(255)` | Required; `INV` |
 | `invoice_next_number` | `integer` | Required; `1` |
-| `invoice_number_padding` | `integer` | Required; `4` |
+| `invoice_number_padding` | `integer` | Required; `4`. Credit and debit notes use it too |
+| `credit_note_prefix`, `debit_note_prefix` | `varchar(255)` | Required; `CN`, `DN` |
+| `credit_note_next_number`, `debit_note_next_number` | `integer` | Required; `1` |
 | `invoice_due_days` | `integer` | Required; `30` |
 | `invoice_terms` | `text` | Nullable |
 | `ewb_transport_mode` | `varchar(255)` | Required; `Road` |
@@ -261,7 +263,7 @@ Application-managed business configuration. A unique index on `singleton` is use
 | `audit_retention_days` | `integer` | Nullable; `90` |
 | `singleton` | `boolean` | Required; `true`; unique |
 
-`organization_settings_numbering_valid` requires `invoice_next_number > 0` and padding between 0 and 11. `organization_settings_security_valid` requires `audit_retention_days` to be null or positive. The sign-in rules (`allowed_ips`, `session_timeout_minutes`, `enforce_2fa`) are not business columns: the schema-transfer migration copied business 1's values to `public.installation_settings`, and the tenant migration `20261015121215_drop_installation_rules_from_business_settings` removed them from every business schema. `Organization` keeps them as virtual fields; `Settings.with_installation_rules/1` fills them in for the Security form, and saving that section writes them to `InstallationSettings` in the same transaction as the business's audit retention. The browser security plug reads that shared table. Audit retention remains specific to each business.
+`organization_settings_numbering_valid` requires `invoice_next_number`, `credit_note_next_number` and `debit_note_next_number` to be greater than 0, and padding between 0 and 11. The 16-character GST limit on a whole number is checked by the settings changeset, not in SQL. `organization_settings_security_valid` requires `audit_retention_days` to be null or positive. The sign-in rules (`allowed_ips`, `session_timeout_minutes`, `enforce_2fa`) are not business columns: the schema-transfer migration copied business 1's values to `public.installation_settings`, and the tenant migration `20261015121215_drop_installation_rules_from_business_settings` removed them from every business schema. `Organization` keeps them as virtual fields; `Settings.with_installation_rules/1` fills them in for the Security form, and saving that section writes them to `InstallationSettings` in the same transaction as the business's audit retention. The browser security plug reads that shared table. Audit retention remains specific to each business.
 
 Database and Ecto defaults are not interchangeable: for example, the organization Ecto schema stores a human-readable currency label such as `AED (د.إ) - UAE Dirham` while the SQL default is `INR`; `Currency.code_from_label/1` reads the code back. Normal writes pass through the application's settings changesets.
 
@@ -385,6 +387,7 @@ Source: [invoice item schema](../lib/quantum_billing/invoices/invoice_item.ex).
 | Columns | SQL type | Required/default |
 | --- | --- | --- |
 | `note_number` | `varchar(255)` | Required; unique |
+| `note_date` | `date` | Required. The business's local date when raised |
 | `note_type` | `varchar(255)` | Required; `Credit` |
 | `invoice_id` | `bigint` FK → same-schema `invoices.id` | Required; delete cascades |
 | `client_id` | `bigint` FK → same-schema `clients.id` | Required; delete restricts |
@@ -395,7 +398,9 @@ Source: [invoice item schema](../lib/quantum_billing/invoices/invoice_item.ex).
 | `tax_breakdown` | `jsonb` | Required; `[]`. VAT only, as on `invoices` |
 | `custom_fields` | `jsonb` | Required; `{}` |
 
-Indexes cover unique `note_number`, `invoice_id`, and `client_id`. Application types are Credit/Debit and statuses are Issued/Cancelled/Applied. The changeset requires a non-negative grand total; no corresponding money or status check exists in the baseline SQL. The context generates a `CN-` or `DN-` number tied to the invoice number plus a runtime unique suffix, rather than consuming the invoice sequence.
+Indexes cover unique `note_number`, `note_date`, `invoice_id`, and `client_id`. Application types are Credit/Debit and statuses are Issued/Cancelled/Applied. The changeset requires a non-negative grand total; no corresponding money or status check exists in the baseline SQL.
+
+The context allocates `note_number` from the business's own series: it locks the organization row `FOR UPDATE`, which is the same lock and order invoices take, then inserts the note and advances `credit_note_next_number` or `debit_note_next_number` in one transaction. It sets `note_date` from the business's timezone in that transaction. Neither field is cast from params, and the changeset refuses a number over 16 characters or outside letters, digits, `-` and `/`. The tenant migration `20261120101430_add_note_series_and_note_date` filled `note_date` for existing notes from `inserted_at` converted to IST, and left their numbers unchanged. GSTR-1 filters and dates notes by `note_date`.
 
 Source: [credit-note schema](../lib/quantum_billing/credit_notes/credit_note.ex), [credit-note context](../lib/quantum_billing/credit_notes.ex).
 

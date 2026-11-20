@@ -3,10 +3,14 @@ defmodule QuantumBilling.CreditNotes do
   Context module for managing Credit Notes and Debit Notes.
   """
   import Ecto.Query, warn: false
-  alias QuantumBilling.Repo
+  alias Ecto.Multi
+  alias QuantumBilling.Compliance
   alias QuantumBilling.CreditNotes.CreditNote
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Money
+  alias QuantumBilling.Repo
+  alias QuantumBilling.Settings
+  alias QuantumBilling.Settings.Organization
 
   # Notes on binned invoices are left out; a left join keeps notes with no invoice.
   def list_credit_notes do
@@ -61,11 +65,13 @@ defmodule QuantumBilling.CreditNotes do
 
   @doc """
   Raises a note against `invoice`. Amounts are rupees; missing ones default to the invoice's.
+
+  The note takes the next number of its type's series (Rule 53 of the CGST
+  Rules: consecutive, at most 16 characters) and today's date where the
+  business is.
   """
   def create_credit_note_for_invoice(%Invoice{} = invoice, attrs \\ %{}) do
     note_type = Map.get(attrs, "note_type") || Map.get(attrs, :note_type, "Credit")
-    prefix = if note_type == "Credit", do: "CN", else: "DN"
-    note_number = "#{prefix}-#{invoice.invoice_number}-#{System.unique_integer([:positive])}"
 
     subtotal =
       Map.get(attrs, "subtotal") ||
@@ -86,7 +92,6 @@ defmodule QuantumBilling.CreditNotes do
     reason = Map.get(attrs, "reason") || Map.get(attrs, :reason, "Order modification / refund")
 
     params = %{
-      note_number: note_number,
       note_type: note_type,
       invoice_id: invoice.id,
       client_id: invoice.client_id,
@@ -103,19 +108,55 @@ defmodule QuantumBilling.CreditNotes do
         _none -> params
       end
 
-    %CreditNote{tax_regime: invoice.tax_regime || "gst"}
-    |> CreditNote.changeset(params)
-    |> put_breakdown(invoice)
-    |> Repo.insert()
-    |> case do
-      {:ok, note} = result ->
-        QuantumBilling.Webhooks.publish("credit_note.created", note.id)
-        result
+    # Outside the transaction: creating the row inside it deadlocks concurrent callers.
+    Settings.ensure_organization()
 
-      error ->
-        error
+    Multi.new()
+    # Locked so two notes cannot take the same number. Invoices lock the same
+    # row the same way, so the two never wait on each other in a cycle.
+    |> Multi.run(:organization, fn repo, _changes ->
+      case repo.one(from o in Organization, order_by: [asc: o.id], limit: 1, lock: "FOR UPDATE") do
+        nil -> {:ok, %Organization{}}
+        organization -> {:ok, organization}
+      end
+    end)
+    |> Multi.insert(:note, fn %{organization: locked} ->
+      trusted = %{
+        note_number: Settings.next_note_number(locked, series(note_type)),
+        note_date: Compliance.local_date(DateTime.utc_now(), locked.timezone)
+      }
+
+      %CreditNote{tax_regime: invoice.tax_regime || "gst"}
+      |> CreditNote.changeset(params, trusted)
+      |> put_breakdown(invoice)
+    end)
+    |> Multi.run(:advance_number, fn repo, %{organization: organization, note: note} ->
+      field = next_number_field(note.note_type)
+
+      organization
+      |> Ecto.Changeset.change(%{field => (Map.get(organization, field) || 1) + 1})
+      |> repo.insert_or_update()
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{note: note}} ->
+        QuantumBilling.Webhooks.publish("credit_note.created", note.id)
+        {:ok, note}
+
+      {:error, :note, changeset, _changes} ->
+        {:error, changeset}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
     end
   end
+
+  # An unknown type still takes a number, and the changeset then refuses it.
+  defp series("Debit"), do: "Debit"
+  defp series(_credit_or_unknown), do: "Credit"
+
+  defp next_number_field("Debit"), do: :debit_note_next_number
+  defp next_number_field(_credit), do: :credit_note_next_number
 
   defp invoice_tax(invoice) do
     (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0) +

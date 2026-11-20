@@ -166,6 +166,8 @@ On a VAT invoice each line picks one of the business's active VAT rates instead 
 
 Saving an invoice consumes the next configured number and advances the counter in the same database transaction. The settings row is locked during allocation, and an invoice-number unique constraint provides a second check. A Draft consumes a number too. Moving a document to the Bin or deleting it permanently does not give the number back.
 
+GST (Rule 46(b) of the CGST Rules) limits a document number to 16 characters: letters, digits, `-` and `/`. Settings → Invoice checks each series' prefix, padding and next number against that limit and refuses to save a combination that would produce a longer number. A prefix must start with a letter or a digit from 1 to 9. The panel previews the next invoice, credit-note and debit-note numbers as you type.
+
 The document stores copies of customer and issuing-company details alongside the client relationship. The company snapshot is populated at creation, so subsequent company setting changes do not automatically replace the issuer block on saved invoices.
 
 The selected design's layout XML is also copied to the invoice. A Draft can refresh that layout snapshot when edited; a document beyond Draft keeps its saved layout. Template accent color and the organization logo are read live, so a historical document can still change its branding when those values change.
@@ -285,7 +287,11 @@ Dates advance by calendar months, clamping to the last valid day of the target m
 
 ## 11. Credit and debit adjustments
 
-An invoice can have a separately stored Credit or Debit note with a reason, amount components, note number, client, source invoice, and Issued/Cancelled/Applied status. Default amounts are copied from the invoice; the user can enter an adjustment amount.
+An invoice can have a separately stored Credit or Debit note with a reason, amount components, note number, note date, client, source invoice, and Issued/Cancelled/Applied status. Default amounts are copied from the invoice; the user can enter an adjustment amount.
+
+Credit and debit notes each run their own consecutive series, as Rule 53 of the CGST Rules requires: `CN-0001`, `CN-0002`… and `DN-0001`, `DN-0002`…. The prefix and next number of each are set in Settings → Invoice, and they share the invoice padding. A note's number is allocated the same way an invoice's is, with the settings row locked, so notes raised at the same moment never share or skip a number. The number cannot be typed in or sent through the API. If a stored prefix would produce a number longer than 16 characters, the note is refused rather than issued, and the counter does not move.
+
+The note date is the day the note is raised in the business's timezone (IST for an Indian business), so a note raised at 00:30 IST on the 1st is dated the 1st. The GSTR-1 export reports notes by this date, as `nt_dt`, and in this date's month.
 
 A note on a VAT invoice keeps that invoice's regime, and its VAT is split across the invoice's rates in the same proportions.
 
@@ -309,7 +315,7 @@ When any invoice in the period charged VAT, the dashboard adds VAT to its tax tr
 
 General report sums combine taxable value and tax, rather than necessarily matching rounded grand totals. Client filtering uses the stored client name; separate clients with the same name can be combined in that view. Choose a status explicitly when the business question needs to exclude Drafts or Cancelled documents.
 
-GSTR-1 export is not available to a VAT business, and there is no VAT return export. It generates a JSON file for a selected `MMYYYY` period, grouping B2B, B2CL, B2CS, registered-counterparty notes, and HSN data. It excludes Cancelled and binned invoices, but includes Draft invoices because they already hold a number. It uses compiled classification thresholds and includes an HSN fallback for missing codes. Review the file with the responsible accountant before submission. Downloading it neither submits a return nor records a filing acknowledgement.
+GSTR-1 export is not available to a VAT business, and there is no VAT return export. It generates a JSON file for a selected `MMYYYY` period, grouping B2B, B2CL, B2CS, registered-counterparty notes (by note date), and HSN data. It excludes Cancelled and binned invoices, but includes Draft invoices because they already hold a number. It uses compiled classification thresholds and includes an HSN fallback for missing codes. Review the file with the responsible accountant before submission. Downloading it neither submits a return nor records a filing acknowledgement.
 
 ## 13. Compliance calendar and HSN/SAC reference
 
@@ -383,6 +389,8 @@ The main boundaries to account for during acceptance testing are:
 - VAT covers invoicing, rates, credit notes and reports. There is no VAT return filing or e-invoicing for any VAT country, no currency conversion, and no three-decimal currencies (KWD, BHD, OMR).
 - Custom fields extend the six existing record types. There are no custom record types, no field that links to another record, and no custom fields in webhook payloads or on credit notes and e-way bills in the API.
 - Recurring profiles substitute a fixed default line for absent/invalid items; profiles need explicit review before use with real customers.
+- Credit and debit notes raised before the note series existed keep their original numbers, such as `CN-INV-0001-5762`. These are often longer than 16 characters, so the GST portal rejects them, and they are left unchanged because they are part of the record already issued. Their note date was set from when they were saved, converted to IST. A business that reported such notes should correct them with its accountant, in the next GSTR-1 or by amendment.
+- A business whose stored invoice prefix already makes numbers longer than 16 characters can keep raising invoices, but must shorten the prefix or padding before Settings → Invoice will save again. Credit and debit notes are refused until their series fits.
 - Receivables track whole invoice Paid/unpaid state plus notes, rather than partial payments, refunds, settlement fees, or allocation of overpayments.
 - Role restrictions are not field-level permissions; backup restoration requires the access check called out above.
 - Business JSON is a selective data backup and does not contain the whole deployed installation.
