@@ -10,7 +10,7 @@ One PostgreSQL database holds shared account data in `public` and separate busin
 
 | Location | Tables | Ownership |
 | --- | --- | --- |
-| `public` | `users`, `users_tokens` | An account and its sign-in state are shared across businesses. |
+| `public` | `users`, `users_tokens`, `sign_in_requests` | An account and its sign-in state are shared across businesses. |
 | `public` | `businesses`, `memberships`, `invitations` | Defines each business and who may access it. Roles belong to a membership. |
 | `public` | `installation_settings` | Sign-in policy for the whole installation. |
 | `public` | `api_keys`, `api_idempotency_keys` | External API keys (each names its business) and replayable write responses. Shared because a request finds its key before it knows its business. |
@@ -122,10 +122,27 @@ Unique B-tree indexes cover `email` and `username`. The historical `users.role` 
 | `context` | `varchar(255)` | Required | Token purpose, such as `session`, confirmation, login, or password reset. |
 | `sent_to` | `varchar(255)` | Nullable | Email address the token was issued to. |
 | `authenticated_at` | timestamp | Nullable | Original authentication time. |
+| `device_id` | `varchar(255)` | Nullable | Session tokens only: the browser's `_quantum_billing_device` cookie value, so reissued tokens from one browser are known as one device. |
+| `user_agent`, `ip_address` | `varchar(255)` | Nullable | Session tokens only: where the session was started. |
+| `last_seen_at` | timestamp | Nullable | Session tokens only: last use, written at most once a minute. |
 
-There is an index on `user_id` and a unique index on `(context, token)`. This table has `inserted_at` only. Session tokens are stored as generated random bytes; email tokens are stored as SHA-256 hashes. Do not describe every row as a hashed token.
+There is an index on `user_id`, one on `(user_id, context)`, and a unique index on `(context, token)`. This table has `inserted_at` only. Session tokens are stored as generated random bytes; email tokens are stored as SHA-256 hashes. Do not describe every row as a hashed token.
 
 Expiry is enforced by application queries, not by a PostgreSQL TTL: session 14 days, magic link 15 minutes, confirmation/change-email 7 days, and password reset 4 hours. The installation idle timeout is a separate policy.
+
+Under "One device at a time", a session ended so the account could sign in elsewhere is moved to the context `session_replaced`. It no longer signs anyone in; it is kept only so that browser can be told why it was signed out.
+
+### `sign_in_requests`
+
+| Columns | SQL type | Required/default | Meaning |
+| --- | --- | --- | --- |
+| `user_id` | `bigint` FK → `public.users.id` | Required | Deleting the user cascades to their requests. |
+| `token` | `bytea` | Required; unique | SHA-256 of the random token held in the waiting browser's session. |
+| `device_id`, `user_agent`, `ip_address` | `varchar(255)` | Nullable | The waiting browser, shown to the signed-in device. |
+| `status` | `varchar(255)` | Required; `pending` | `pending`, `approved`, `denied`, or `cancelled`. |
+| `expires_at` | timestamp | Required | Two minutes to answer; once approved, two minutes to finish signing in. |
+
+Only used under "One device at a time". An index covers `(user_id, status)`. An allowed request is deleted when used; rows untouched for a day are deleted when the user's next request is made.
 
 ### `businesses`
 
@@ -169,6 +186,7 @@ Indexes cover `token` (unique), `email`, and `business_id`. The partial unique i
 | `allowed_ips` | `varchar(255)` | Nullable | Installation-wide IP allowlist. |
 | `session_timeout_minutes` | `integer` | Required; `60` | Idle timeout policy. |
 | `enforce_2fa` | `boolean` | Required; `false` | Installation-wide mandatory 2FA policy. |
+| `single_session` | `boolean` | Required; `false` | "One device at a time": a new sign-in must be allowed from the device already signed in. |
 | `singleton` | `boolean` | Required; `true` | Identifies the single policy row. |
 
 A unique index on `singleton` plus `CHECK (singleton)` allows at most one row, and `installation_settings_timeout_positive` requires a positive timeout. An empty table is permitted; the context returns in-memory defaults until settings are saved. Sign-in policy is shared because it applies before a user chooses a business.
@@ -194,7 +212,7 @@ One row per `(api_key_id, key)` (unique): the request's SHA-256, then the respon
 
 `key` (`bytea` primary key: SHA-256 of the limiter key, which holds IPs and emails), `count`, `reset_at`. UNLOGGED: counters are worthless after a crash and rewritten constantly. Expired rows are swept every minute.
 
-Sources: [account schema](../lib/quantum_billing/accounts/user.ex), [token schema and expiry rules](../lib/quantum_billing/accounts/user_token.ex), [invitation schema](../lib/quantum_billing/accounts/invitation.ex), [installation settings](../lib/quantum_billing/installation_settings.ex), [authentication migrations](../priv/repo/migrations/20260725171317_create_users_auth_tables.exs), [business-schema migration](../priv/repo/migrations/20261015115410_move_business_tables_into_their_own_schema.exs).
+Sources: [account schema](../lib/quantum_billing/accounts/user.ex), [token schema and expiry rules](../lib/quantum_billing/accounts/user_token.ex), [invitation schema](../lib/quantum_billing/accounts/invitation.ex), [installation settings](../lib/quantum_billing/installation_settings.ex), [sign-in request schema](../lib/quantum_billing/accounts/sign_in_request.ex), [one-device migration](../priv/repo/migrations/20261120071133_add_single_session_sign_in.exs), [authentication migrations](../priv/repo/migrations/20260725171317_create_users_auth_tables.exs), [business-schema migration](../priv/repo/migrations/20261015115410_move_business_tables_into_their_own_schema.exs).
 
 ## 4. Operational tables in each `biz_N`
 

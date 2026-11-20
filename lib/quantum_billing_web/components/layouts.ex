@@ -1072,6 +1072,7 @@ defmodule QuantumBillingWeb.Layouts do
     ~H"""
     <div id={@id} aria-live="polite">
       <.flash kind={:info} flash={@flash} /> <.flash kind={:error} flash={@flash} />
+      <.sign_in_request_prompt request={Phoenix.Flash.get(@flash, :sign_in_request)} />
       <.flash
         id="client-error"
         kind={:error}
@@ -1104,6 +1105,76 @@ defmodule QuantumBillingWeb.Layouts do
     </div>
     """
   end
+
+  @doc """
+  "One device at a time": asks this device whether to let another one sign in.
+  Carried in the flash so every page shows it; see `UserAuth.watch_own_account/1`.
+  """
+  attr :request, :map, default: nil
+
+  def sign_in_request_prompt(%{request: %{"id" => _}} = assigns) do
+    ~H"""
+    <div
+      id="sign-in-request-prompt"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="sign-in-request-title"
+      aria-describedby="sign-in-request-body"
+      class="fixed inset-0 z-[60] flex items-end justify-center bg-base-content/30 p-4 backdrop-blur-[2px] sm:items-center"
+    >
+      <div class="w-full max-w-sm rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xl motion-safe:animate-[sign-in-request-pop_180ms_ease-out]">
+        <div class="flex items-start gap-3">
+          <span class="grid size-9 shrink-0 place-items-center rounded-full bg-warning/15 text-warning">
+            <.icon name="hero-device-phone-mobile" class="size-5" />
+          </span>
+          <div class="min-w-0">
+            <h2 id="sign-in-request-title" class="text-sm font-semibold text-base-content">
+              Someone is signing in to your account
+            </h2>
+            <p id="sign-in-request-body" class="mt-1 text-sm text-base-content/70">
+              On
+              <span class="font-medium text-base-content">{@request["device"]}</span><span :if={
+                @request["ip"]
+              }>, {@request["ip"]}</span>. Your account can be used on one device at a time.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-2 gap-2">
+          <button
+            id="sign-in-request-sign-out"
+            type="button"
+            phx-click="sign_in_request_answer"
+            phx-value-id={@request["id"]}
+            phx-value-answer="approve"
+            phx-disable-with="Signing out…"
+            class="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg border border-base-300 px-3 text-sm font-medium text-base-content transition hover:bg-base-200 active:scale-[0.98]"
+          >
+            Sign out here
+          </button>
+          <button
+            id="sign-in-request-continue"
+            type="button"
+            phx-click="sign_in_request_answer"
+            phx-value-id={@request["id"]}
+            phx-value-answer="deny"
+            phx-disable-with="Continuing…"
+            autofocus
+            class="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-content shadow-sm transition hover:brightness-110 active:scale-[0.98]"
+          >
+            Continue
+          </button>
+        </div>
+
+        <p class="mt-3 text-xs text-base-content/55">
+          If this isn't you, choose Continue and change your password.
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  def sign_in_request_prompt(assigns), do: ~H""
 
   @doc "Light, dark and system theme toggle. `root.html.heex` applies the theme before paint."
   def theme_toggle(assigns) do

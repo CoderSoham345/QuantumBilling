@@ -1678,10 +1678,16 @@ defmodule QuantumBillingWeb.SettingsLive do
           hint="Requires two-factor authentication on every login."
         />
 
+        <.toggle
+          field={f[:single_session]}
+          label="One device at a time"
+          hint="A new sign-in must be allowed from the device already signed in."
+        />
+
         <p id="installation-rules-note" class="flex items-start gap-1.5 text-xs text-base-content/55">
           <.icon name="hero-information-circle" class="mt-px size-3.5 shrink-0" />
-          The IP ranges, session timeout and 2FA rule apply to every business on this
-          installation. Audit log retention is this business's own.
+          The IP ranges, session timeout, 2FA rule and one device at a time apply to
+          every business on this installation. Audit log retention is this business's own.
         </p>
       </.form>
 

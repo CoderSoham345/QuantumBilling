@@ -83,7 +83,7 @@ Settings are divided into independently saved sections. A change in one section 
 | Notifications | Invoice-created, e-way-bill-generated, and filing-reminder preferences, plus the reminder lead window. |
 | SMTP | Mail host, port, credentials, SSL setting, sender address/name, test delivery, and recent delivery results. |
 | Integrations | Calendar connections (Google Calendar, CalDAV, private feed), UPI details, Razorpay keys, IRP-related settings, and an outbound webhook URL/secret. |
-| Security | Allowed IP addresses/CIDRs, idle session timeout, mandatory two-factor preference, and audit retention. |
+| Security | Allowed IP addresses/CIDRs, idle session timeout, mandatory two-factor preference, one device at a time, and audit retention. |
 | Preferences | Language and list page-size preferences. These settings should not be read as a promise that every screen is translated or consumes every preference. |
 | Backup & Restore | JSON business data export and restore. |
 | Data model | Owners only, at `/settings/data-model`: the business's own fields on clients, invoices, invoice lines, credit notes, e-way bills, and recurring profiles. See [Custom fields](#custom-fields). |
@@ -92,7 +92,9 @@ Some preferences are stored ahead of complete operational support. In particular
 
 SMTP passwords, Razorpay secrets, IRP passwords, and webhook secrets saved through Settings use encrypted database fields. Secret inputs are write-only: saved values are not sent back to the browser, and submitting a blank secret preserves the stored value. Environment-supplied credentials and deployment encryption keys are described in [Configuration](configuration.md).
 
-IP allowlists, idle timeout, and mandatory two-factor enforcement read installation-level security settings because they must apply before choosing a business. They protect the shared sign-in, rather than changing independently as a person switches firms. The Security form loads these shared rules and saves them transactionally with the business's security settings. An owner changing these rules affects everyone on the installation. Audit retention remains a business setting.
+IP allowlists, idle timeout, mandatory two-factor enforcement, and one device at a time read installation-level security settings because they must apply before choosing a business. They protect the shared sign-in, rather than changing independently as a person switches firms. The Security form loads these shared rules and saves them transactionally with the business's security settings. An owner changing these rules affects everyone on the installation. Audit retention remains a business setting.
+
+**One device at a time** (off by default) lets an account be signed in on only one device. When someone signs in on a second device while the first is in use, the second device is not let in: it waits, with only a Sign out button. The first device gets a prompt on whatever page it has open, naming the browser and IP address. *Sign out here* signs the first device out and lets the second in; *Continue* keeps the first device and refuses the second. The check runs only after the password and any two-factor code are accepted. A device counts as in use only while it is inside the idle timeout, so an abandoned device never blocks anyone; an unanswered request closes after two minutes; and resetting the password signs out every device, which is the way back in if the first device is lost. Turning the rule on signs nobody out; it applies from each person's next sign-in.
 
 ### Tax regime: India GST or VAT
 

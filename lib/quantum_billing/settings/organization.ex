@@ -112,6 +112,7 @@ defmodule QuantumBilling.Settings.Organization do
     field :allowed_ips, :string, virtual: true
     field :session_timeout_minutes, :integer, default: 60, virtual: true
     field :enforce_2fa, :boolean, default: false, virtual: true
+    field :single_session, :boolean, default: false, virtual: true
     field :audit_retention_days, :integer, default: 90
 
     field :doc_logo_path, :string
@@ -155,7 +156,7 @@ defmodule QuantumBilling.Settings.Organization do
   @integrations ~w(upi_vpa upi_payee_name razorpay_key_id razorpay_key_secret
                    razorpay_webhook_secret irp_username irp_password irp_client_id)a
 
-  @security ~w(allowed_ips session_timeout_minutes enforce_2fa audit_retention_days)a
+  @security ~w(allowed_ips session_timeout_minutes enforce_2fa single_session audit_retention_days)a
 
   @doc "The changeset for one Settings section."
   def changeset(organization, attrs, section)

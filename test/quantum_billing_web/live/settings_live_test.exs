@@ -962,6 +962,16 @@ defmodule QuantumBillingWeb.SettingsLiveTest do
       assert rules.session_timeout_minutes == 30
       assert Settings.get_organization().audit_retention_days == 90
     end
+
+    test "turns on one device at a time for the installation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/security")
+
+      view
+      |> form("#settings-form", %{"organization" => %{"single_session" => "true"}})
+      |> render_submit()
+
+      assert QuantumBilling.InstallationSettings.get().single_session
+    end
   end
 
   describe "preferences" do

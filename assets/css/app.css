@@ -254,6 +254,12 @@ a.btn:focus-visible {
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
+/* "One device at a time" prompt: rises in, so it is noticed on any page. */
+@keyframes sign-in-request-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Drawn by a sweeping clip: dash animations break with non-scaling strokes. */
 .qb-chart-sweep {
   transform-box: fill-box;

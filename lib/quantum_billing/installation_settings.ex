@@ -1,7 +1,8 @@
 defmodule QuantumBilling.InstallationSettings do
   @moduledoc """
   The sign-in rules, which protect the whole installation rather than one
-  business: the IP allowlist, the idle timeout and mandatory two-factor. Also
+  business: the IP allowlist, the idle timeout, mandatory two-factor and one
+  device at a time. Also
   the super admin's switches: maintenance mode and the main sidebar's layout.
 
   They apply before anyone has chosen a business — on the sign-in page itself —
@@ -19,6 +20,8 @@ defmodule QuantumBilling.InstallationSettings do
     field :allowed_ips, :string
     field :session_timeout_minutes, :integer, default: 60
     field :enforce_2fa, :boolean, default: false
+    # One device at a time: a new sign-in waits for the signed-in device to allow it.
+    field :single_session, :boolean, default: false
     field :singleton, :boolean, default: true
     # Set by the super admin only, never through the Security form.
     field :maintenance_mode, :boolean, default: false
@@ -28,7 +31,7 @@ defmodule QuantumBilling.InstallationSettings do
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(allowed_ips session_timeout_minutes enforce_2fa)a
+  @fields ~w(allowed_ips session_timeout_minutes enforce_2fa single_session)a
 
   @doc "The fields that hold the rules."
   def fields, do: @fields

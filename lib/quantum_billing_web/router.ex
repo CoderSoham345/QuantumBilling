@@ -288,11 +288,16 @@ defmodule QuantumBillingWeb.Router do
       live "/users/reset-password/:token", UserLive.ResetPassword, :edit
       # Requires a pending sign-in in the session.
       live "/users/two-factor", UserLive.TwoFactorChallenge, :new
+      # Requires a sign-in held for the device already signed in to allow.
+      live "/users/session-conflict", UserLive.SessionConflict, :new
     end
 
     get "/users/confirm/:token", UserConfirmationController, :confirm
     post "/users/log-in", UserSessionController, :create
     post "/users/two-factor", UserSessionController, :verify_two_factor
+    # Controller actions: only an HTTP response can write or clear the session.
+    post "/users/session-conflict", UserSessionController, :finish_conflict
+    delete "/users/session-conflict", UserSessionController, :cancel_conflict
     delete "/users/log-out", UserSessionController, :delete
   end
 
