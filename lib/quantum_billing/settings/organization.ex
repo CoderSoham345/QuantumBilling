@@ -99,6 +99,8 @@ defmodule QuantumBilling.Settings.Organization do
     # Integrations. The credentials among them are encrypted.
     field :razorpay_key_id, :string
     field :razorpay_key_secret, Encrypted.Secret, redact: true
+    # Verifies incoming Razorpay webhooks for this business only.
+    field :razorpay_webhook_secret, Encrypted.Secret, redact: true
     field :irp_username, :string
     field :irp_password, Encrypted.Secret, redact: true
     field :irp_client_id, :string
@@ -150,8 +152,8 @@ defmodule QuantumBilling.Settings.Organization do
   @smtp ~w(smtp_host smtp_port smtp_username smtp_password smtp_ssl smtp_from_email smtp_from_name)a
 
   # `webhook_url` and `webhook_secret` are legacy; webhooks have their own endpoints now.
-  @integrations ~w(upi_vpa upi_payee_name razorpay_key_id razorpay_key_secret irp_username
-                   irp_password irp_client_id)a
+  @integrations ~w(upi_vpa upi_payee_name razorpay_key_id razorpay_key_secret
+                   razorpay_webhook_secret irp_username irp_password irp_client_id)a
 
   @security ~w(allowed_ips session_timeout_minutes enforce_2fa audit_retention_days)a
 
@@ -271,7 +273,12 @@ defmodule QuantumBilling.Settings.Organization do
   end
 
   # Credentials for other systems: never rendered back into the settings page.
-  @write_only ~w(smtp_password razorpay_key_secret irp_password webhook_secret)a
+  @write_only ~w(smtp_password razorpay_key_secret razorpay_webhook_secret irp_password
+                 webhook_secret)a
+
+  @doc "Whether this business has its own Razorpay webhook secret, without revealing it."
+  def razorpay_webhook_secret_set?(%__MODULE__{razorpay_webhook_secret: secret}),
+    do: is_binary(secret) and String.trim(secret) != ""
 
   @doc """
   The organisation with stored secrets blanked for display. A blank secret on save keeps the stored one.

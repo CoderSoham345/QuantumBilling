@@ -127,6 +127,39 @@ defmodule QuantumBilling.PaymentsTest do
       assert Repo.get(Invoice, invoice.id).status == "Draft"
     end
 
+    test "a payment far above the total is rejected and audited", %{invoice: invoice} do
+      assert {:error, :amount_mismatch} =
+               Payments.process_razorpay_webhook(link_paid(%{"amount_paid" => 999_999_999}))
+
+      assert Repo.get(Invoice, invoice.id).status == "Draft"
+
+      assert Repo.exists?(
+               from l in QuantumBilling.Audit.AuditLog,
+                 where: l.action == "payment_rejected" and l.resource_id == ^to_string(invoice.id)
+             )
+    end
+
+    test "a captured payment far above the total is rejected", %{invoice: invoice} do
+      payload = captured(%{"amount" => 999_999_999, "notes" => %{"invoice_number" => "INV-9950"}})
+
+      assert {:error, :amount_mismatch} = Payments.process_razorpay_webhook(payload)
+      assert Repo.get(Invoice, invoice.id).status == "Draft"
+    end
+
+    test "a gateway fee the customer paid, up to 5% over, is accepted", %{invoice: invoice} do
+      assert {:ok, %Invoice{status: "Paid"}} =
+               Payments.process_razorpay_webhook(link_paid(%{"amount_paid" => 1_050_000}))
+
+      assert Repo.get(Invoice, invoice.id).status == "Paid"
+    end
+
+    test "just past 5% over is rejected", %{invoice: invoice} do
+      assert {:error, :amount_mismatch} =
+               Payments.process_razorpay_webhook(link_paid(%{"amount_paid" => 1_050_001}))
+
+      assert Repo.get(Invoice, invoice.id).status == "Draft"
+    end
+
     test "the wrong currency is rejected", %{invoice: invoice} do
       assert {:error, :currency_mismatch} =
                Payments.process_razorpay_webhook(link_paid(%{"currency" => "USD"}))

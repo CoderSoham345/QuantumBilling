@@ -94,9 +94,17 @@ Read only by [`docker-compose.yml`](../docker-compose.yml); see [deployment](dep
 | `RAZORPAY_KEY_ID` | Unset | Fallback provider key ID; business settings take precedence |
 | `RAZORPAY_KEY_SECRET` | Unset | Fallback provider secret; business settings take precedence |
 | `RAZORPAY_SANDBOX` | Enabled in native dev/test; disabled in production | `true`/`1` permits simulated links, `false`/`0` disables them |
-| `RAZORPAY_WEBHOOK_SECRET` | Unset | Verify incoming signatures; absent value causes deliveries to be rejected |
+| `RAZORPAY_WEBHOOK_SECRET` | Unset | Legacy fallback for business 1 only, used while it has no webhook secret of its own. Never used for any other business |
 
-UPI VPA and payee name are business settings and are printed on invoice/payment documents. They are payment instructions, not authentication secrets. Simulated payment URLs do not establish payment collection. Incoming Razorpay requests go to `/api/webhooks/razorpay/:slug` for the named business; the legacy `/api/webhooks/razorpay` path selects business 1. The verification secret is currently installation-level. See [Business](Business.md) for status transitions and [architecture](technical-architecture.md) for validation.
+UPI VPA and payee name are business settings and are printed on invoice/payment documents. They are payment instructions, not authentication secrets. Simulated payment URLs do not establish payment collection. Incoming Razorpay requests go to `/api/webhooks/razorpay/:slug` for the named business; the legacy `/api/webhooks/razorpay` path selects business 1. See [Business](Business.md) for status transitions and [architecture](technical-architecture.md) for validation.
+
+### Per-business webhook secret
+
+Each business verifies its Razorpay deliveries with its own secret, set by an owner in **Settings → Integrations → Razorpay Webhook Secret**. Enter the same value in the Razorpay dashboard for that business's webhook URL. The secret is stored encrypted, is never shown again, and is left as it is when the field is saved blank.
+
+A delivery to a business's URL is checked only against that business's secret, so one business cannot sign payments for another. Business 1 alone falls back to `RAZORPAY_WEBHOOK_SECRET` while it has none of its own; once it sets one, the server-wide secret stops working for it too. Any other business without a secret has every delivery refused with 503, and Razorpay retries until it is set.
+
+**Upgrading:** if businesses other than business 1 were using `RAZORPAY_WEBHOOK_SECRET`, give each of them its own secret, then change `RAZORPAY_WEBHOOK_SECRET`. Everyone who was given it can still sign deliveries for business 1 until it changes.
 ## Calendars
 
 | Variable | Default | Meaning |

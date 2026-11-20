@@ -8,10 +8,41 @@ defmodule QuantumBilling.Payments do
   alias QuantumBilling.Audit
   alias QuantumBilling.Notifications
   alias QuantumBilling.Repo
+  alias QuantumBilling.Settings
+  alias QuantumBilling.Settings.Organization
   alias QuantumBilling.Webhooks
   alias QuantumBillingWeb.Format
 
   import Ecto.Query, only: [from: 2]
+
+  # A customer who bears the gateway fee pays a little over the total (about
+  # 2-3.5% with GST). Anything beyond this is not that, so it is not applied.
+  @overpayment_tolerance_percent 5
+
+  @doc """
+  The secret that verifies Razorpay webhooks delivered to `business`'s URL:
+  `{:ok, secret}`, or `{:error, :not_configured}`.
+
+  Each business's own, so knowing one firm's secret signs nothing for another.
+  Only business 1, the one the legacy unslugged URL reaches, falls back to the
+  server-wide `RAZORPAY_WEBHOOK_SECRET` while it has none of its own.
+  """
+  def webhook_secret(%{id: business_id} = business) do
+    organization = Repo.with_business(business, &Settings.get_organization/0)
+
+    cond do
+      Organization.razorpay_webhook_secret_set?(organization) ->
+        {:ok, organization.razorpay_webhook_secret}
+
+      business_id == 1 and present?(System.get_env("RAZORPAY_WEBHOOK_SECRET")) ->
+        {:ok, System.get_env("RAZORPAY_WEBHOOK_SECRET")}
+
+      true ->
+        {:error, :not_configured}
+    end
+  end
+
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 
   @doc """
   `url` if it is safe to link a customer to (`https://`, a host, no credentials), else `nil`.
@@ -151,9 +182,11 @@ defmodule QuantumBilling.Payments do
   defp verify_payment(%Invoice{} = invoice, received, payment_id) do
     expected_amount = invoice.grand_total || 0
     expected_currency = invoice.currency || "INR"
+    ceiling = expected_amount + div(expected_amount * @overpayment_tolerance_percent, 100)
 
     cond do
-      not is_integer(received.amount) or received.amount < expected_amount ->
+      not is_integer(received.amount) or received.amount < expected_amount or
+          received.amount > ceiling ->
         reject_payment(invoice, :amount_mismatch, received, payment_id)
 
       received.currency != expected_currency ->

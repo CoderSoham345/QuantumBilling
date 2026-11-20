@@ -85,7 +85,8 @@ defmodule QuantumBilling.BackupTest do
           Settings.get_organization(),
           %{
             "razorpay_key_id" => "rzp_live_travels",
-            "razorpay_key_secret" => "whsec_in_the_backup"
+            "razorpay_key_secret" => "whsec_in_the_backup",
+            "razorpay_webhook_secret" => "rzp_webhook_in_the_backup"
           },
           :integrations
         )
@@ -96,6 +97,8 @@ defmodule QuantumBilling.BackupTest do
       # belong in one, and these decrypt on read.
       refute json =~ "hunter2-in-the-backup"
       refute json =~ "whsec_in_the_backup"
+      refute json =~ "rzp_webhook_in_the_backup"
+      refute json =~ "razorpay_webhook_secret"
       refute json =~ "smtp_password"
 
       # Configuration that is not a credential still travels.

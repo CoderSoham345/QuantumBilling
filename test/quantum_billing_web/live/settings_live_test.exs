@@ -497,6 +497,33 @@ defmodule QuantumBillingWeb.SettingsLiveTest do
       assert org.razorpay_key_id == "rzp_test_999"
     end
 
+    test "saves this business's Razorpay webhook secret without showing it again", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/settings/integrations")
+
+      assert has_element?(view, "#razorpay-webhook-secret-status", "server-wide secret")
+
+      view
+      |> form("#settings-form", %{
+        "organization" => %{"razorpay_webhook_secret" => "whsec_only_this_firm"}
+      })
+      |> render_submit()
+
+      assert Settings.get_organization().razorpay_webhook_secret == "whsec_only_this_firm"
+      assert has_element?(view, "#razorpay-webhook-secret-status", "Secret set")
+      refute render(view) =~ "whsec_only_this_firm"
+
+      # A blank field on the next save leaves the stored secret alone.
+      view
+      |> form("#settings-form", %{
+        "organization" => %{"razorpay_webhook_secret" => "", "razorpay_key_id" => "rzp_test_1"}
+      })
+      |> render_submit()
+
+      assert Settings.get_organization().razorpay_webhook_secret == "whsec_only_this_firm"
+    end
+
     test "secret keys have a show/hide button", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/integrations")
 

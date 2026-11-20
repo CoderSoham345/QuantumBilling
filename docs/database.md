@@ -53,7 +53,7 @@ Raw `Repo.query!/2` SQL is not rewritten by `prepare_query/3`; raw SQL must qual
 | `/api/webhooks/razorpay/:slug` | Resolves the active business by slug and selects it before claiming the event and reconciling an invoice. |
 | Legacy `/api/webhooks/razorpay` | Selects business ID 1 for existing provider configurations. |
 
-The slug selects the data namespace; it is not a credential. Public invoice access still requires the bearer token, and incoming Razorpay events still require a valid signature over the raw request body. Callback signature verification currently uses the installation environment's `RAZORPAY_WEBHOOK_SECRET`, rather than a separate per-business incoming-webhook secret column. `organization_settings.webhook_secret` is the business's **outgoing** webhook signing secret. Named public links exclude archived businesses; the legacy no-slug resolver calls the default-business lookup directly.
+The slug selects the data namespace; it is not a credential. Public invoice access still requires the bearer token, and incoming Razorpay events still require a valid signature over the raw request body. Callback signatures are verified with that business's `organization_settings.razorpay_webhook_secret` (business 1 alone falls back to the installation's `RAZORPAY_WEBHOOK_SECRET` while it has none). `organization_settings.webhook_secret` is the business's **outgoing** webhook signing secret. Named public links exclude archived businesses; the legacy no-slug resolver calls the default-business lookup directly.
 
 The endpoint clears any previous process business before dispatching each HTTP request and restores the prior state before sending its response. Public LiveViews retain their explicitly selected business for payment events and PubSub updates.
 
@@ -237,7 +237,7 @@ Application-managed business configuration. A unique index on `singleton` is use
 | `smtp_ssl` | `boolean` | Nullable; `false` |
 | `smtp_password` | `bytea` | Nullable; encrypted |
 | `razorpay_key_id`, `irp_username`, `irp_client_id`, `webhook_url` | `varchar(255)` | Nullable |
-| `razorpay_key_secret`, `irp_password`, `webhook_secret` | `bytea` | Nullable; encrypted |
+| `razorpay_key_secret`, `razorpay_webhook_secret`, `irp_password`, `webhook_secret` | `bytea` | Nullable; encrypted |
 | `upi_vpa`, `upi_payee_name` | `varchar(255)` | Nullable |
 | `bank_account_name`, `bank_name`, `bank_account_number`, `bank_ifsc`, `bank_branch` | `varchar(255)` | Nullable; printed by an invoice design's Payment details block. The changeset strips spaces from the account number and upper-cases and checks the IFSC format. |
 | `audit_retention_days` | `integer` | Nullable; `90` |

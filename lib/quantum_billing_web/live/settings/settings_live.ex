@@ -2138,6 +2138,37 @@ defmodule QuantumBillingWeb.SettingsLive do
             Paste this into the Razorpay dashboard for {@current_scope.business.name}. Each business has its own,
             so a payment is recorded against the right firm.
           </p>
+
+          <div class="mt-3">
+            <.field
+              field={f[:razorpay_webhook_secret]}
+              label="Razorpay Webhook Secret"
+              type="password"
+              placeholder="••••••••••••"
+              autocomplete="off"
+              hint="Enter the same secret in the Razorpay dashboard's webhook for the URL above. Only this business should know it."
+            />
+            <p
+              id="razorpay-webhook-secret-status"
+              class="mt-1.5 inline-flex items-center gap-1 text-xs font-medium"
+            >
+              <%= cond do %>
+                <% Organization.razorpay_webhook_secret_set?(@organization) -> %>
+                  <.icon name="hero-check-circle" class="size-4 text-success" />
+                  <span class="text-base-content/70">Secret set</span>
+                <% @current_scope.business.id == 1 -> %>
+                  <.icon name="hero-information-circle" class="size-4 text-base-content/50" />
+                  <span class="text-base-content/60">
+                    Not set: using the server-wide secret. Set one of your own to stop relying on it.
+                  </span>
+                <% true -> %>
+                  <.icon name="hero-exclamation-triangle" class="size-4 text-warning" />
+                  <span class="text-base-content/70">
+                    Not set: deliveries to this URL are refused
+                  </span>
+              <% end %>
+            </p>
+          </div>
         </div>
       </div>
 
