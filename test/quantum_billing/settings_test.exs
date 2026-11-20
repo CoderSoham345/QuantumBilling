@@ -203,6 +203,18 @@ defmodule QuantumBilling.SettingsTest do
       assert Settings.next_note_number(organization, "Debit") == "DR/26-0003"
     end
 
+    test "saves the quotation series and holds it to the same rules" do
+      assert {:ok, organization} =
+               save(%{"quotation_prefix" => "EST/26", "quotation_next_number" => 7}, :invoice)
+
+      assert Settings.next_quotation_number(organization) == "EST/26-0007"
+
+      assert {:error, changeset} =
+               save(%{"quotation_prefix" => "0QT", "quotation_next_number" => 0}, :invoice)
+
+      assert %{quotation_prefix: [_], quotation_next_number: [_]} = errors_on(changeset)
+    end
+
     test "holds note series to the same rules" do
       assert {:error, changeset} =
                save(

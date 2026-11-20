@@ -71,7 +71,7 @@ defmodule QuantumBilling.Backup do
                           bank_account_number bank_ifsc bank_branch tax_regime vat_number
                           vat_country prices_include_tax round_to_whole_units
                           credit_note_prefix credit_note_next_number debit_note_prefix
-                          debit_note_next_number)a
+                          debit_note_next_number quotation_prefix quotation_next_number)a
 
   @client_fields ~w(id client_type name display_name gstin pan legal_name business_type category
                     phone_country_code phone email billing_line1 billing_line2 billing_city

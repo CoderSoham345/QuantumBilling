@@ -1395,13 +1395,32 @@ defmodule QuantumBillingWeb.SettingsLive do
         </div>
       </div>
 
+      <div id="settings-quotation-numbering" class="mt-4">
+        <p class="mb-2 text-xs font-medium text-base-content/70">Quotations</p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <.field
+            field={f[:quotation_prefix]}
+            label="Quotation Prefix"
+            required
+            placeholder="QT"
+          />
+          <.field
+            field={f[:quotation_next_number]}
+            label="Next Quotation"
+            type="number"
+            required
+            min="1"
+          />
+        </div>
+      </div>
+
       <div
         id="settings-number-preview"
         class="mt-4 rounded-field border border-base-300 bg-base-200 px-3.5 py-3"
       >
         <p class="text-xs text-base-content/60">Next numbers</p>
 
-        <dl class="mt-1 grid grid-cols-3 gap-2 text-sm">
+        <dl class="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>
             <dt class="text-xs text-base-content/50">Invoice</dt>
             <dd class="font-semibold tracking-tight break-all">
@@ -1418,6 +1437,12 @@ defmodule QuantumBillingWeb.SettingsLive do
             <dt class="text-xs text-base-content/50">Debit note</dt>
             <dd class="font-semibold tracking-tight break-all">
               {Settings.next_note_number(numbering(@form), "Debit")}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-base-content/50">Quotation</dt>
+            <dd class="font-semibold tracking-tight break-all">
+              {Settings.next_quotation_number(numbering(@form))}
             </dd>
           </div>
         </dl>

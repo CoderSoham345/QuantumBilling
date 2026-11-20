@@ -166,7 +166,7 @@ On a VAT invoice each line picks one of the business's active VAT rates instead 
 
 Saving an invoice consumes the next configured number and advances the counter in the same database transaction. The settings row is locked during allocation, and an invoice-number unique constraint provides a second check. A Draft consumes a number too. Moving a document to the Bin or deleting it permanently does not give the number back.
 
-GST (Rule 46(b) of the CGST Rules) limits a document number to 16 characters: letters, digits, `-` and `/`. Settings → Invoice checks each series' prefix, padding and next number against that limit and refuses to save a combination that would produce a longer number. A prefix must start with a letter or a digit from 1 to 9. The panel previews the next invoice, credit-note and debit-note numbers as you type.
+GST (Rule 46(b) of the CGST Rules) limits a document number to 16 characters: letters, digits, `-` and `/`. Settings → Invoice checks each series' prefix, padding and next number against that limit and refuses to save a combination that would produce a longer number. A prefix must start with a letter or a digit from 1 to 9. The panel previews the next invoice, credit-note, debit-note and quotation numbers as you type.
 
 The document stores copies of customer and issuing-company details alongside the client relationship. The company snapshot is populated at creation, so subsequent company setting changes do not automatically replace the issuer block on saved invoices.
 
@@ -216,6 +216,30 @@ flowchart LR
 This diagram shows the main implemented actions, not an enforced accounting state machine. Statuses are fields used by forms, jobs, filters, and integrations; the application does not provide a separate finalization or posting ledger. Review an issued document's changes and cancellations as operational decisions rather than assuming every status transition is blocked automatically.
 
 The invoice detail page supports previewing the document, editing it, viewing/downloading PDF, sending it by email, opening a public client link, requesting an e-invoice, creating an e-way bill, generating a payment link, and raising a credit/debit adjustment.
+
+### Quotations
+
+A quotation (estimate) at `/quotations` uses the invoice form's client picker, lines, HSN/SAC and tax calculation. GST or VAT, intra- or inter-state, and inclusive pricing and rounding all follow the calculation rules above, so a quotation and the invoice made from it show the same totals. In place of payment terms it has a **Valid Until** date, 30 days after the quotation date by default, which cannot fall before the quotation date.
+
+Quotations take their own consecutive series, `QT-0001`, `QT-0002`…, allocated like invoice numbers under the same settings-row lock. The prefix and next number are set in Settings → Invoice, sharing the invoice padding and the 16-character limit. Taking a quotation number never touches the invoice series.
+
+```mermaid
+flowchart LR
+  D[Draft] -->|Mark as sent| S[Sent]
+  D -->|Accepted| A[Accepted]
+  S -->|Accepted| A
+  D -->|Declined| X[Declined]
+  S -->|Declined| X
+  A -->|Convert to invoice| I[Invoice linked]
+```
+
+Statuses are stored as Draft, Sent, Accepted and Declined, and only these buttons change them; a form or API post cannot set a status. **Expired** is not stored. A Draft or Sent quotation shows as Expired once the business's local date passes Valid Until. An expired quotation can be declined but not sent or accepted; editing it to a later Valid Until brings it back. Only Draft and Sent quotations can be edited. Each status change is written to the audit log.
+
+**Convert to Invoice** appears on an Accepted quotation that has no invoice yet. It opens the new-invoice form filled with the quotation's client, place of supply, currency, design, lines, remarks and terms, dated today and with the usual payment terms. The user can review and change it before saving. Saving takes the next invoice number, uses the business's tax settings at that moment, and links the invoice to the quotation. The quotation then shows "Converted to INV-…", and the invoice shows "From quotation QT-…". A quotation converts only once: the save locks the quotation row and checks it again, and a unique index on `invoices.quotation_id` stops two saves at the same moment.
+
+The quotation prints with the business's invoice design, titled "Quotation", with "Quotation Date" and "Valid Until" in place of the invoice dates. A quotation cannot be paid, so the print has no payment block (UPI QR or bank details), no payment terms, no status watermark and no invoice custom fields.
+
+Quotations are not supplies. They appear in no tax figure: not the dashboard, the reports, the GSTR-1 export, the e-way bill prompts or receivables. Only the invoice made from a quotation counts. A quotation that has not been converted can be deleted permanently; a converted one is kept with its invoice.
 
 ## 7. Customer delivery and payment
 
@@ -390,6 +414,7 @@ The main boundaries to account for during acceptance testing are:
 - Cess/TDS, complete multi-currency/export accounting, purchase ITC, bank reconciliation, inventory, and a general ledger are not implemented as complete business systems.
 - VAT covers invoicing, rates, credit notes and reports. There is no VAT return filing or e-invoicing for any VAT country, no currency conversion, and no three-decimal currencies (KWD, BHD, OMR).
 - Custom fields extend the six existing record types. There are no custom record types, no field that links to another record, and no custom fields in webhook payloads or on credit notes and e-way bills in the API.
+- Quotations are in the web app only: there are no API endpoints, webhooks, email sending, public links, custom fields or Bin for them yet, and the default validity of 30 days is fixed. The business JSON backup does not include quotations or the link from an invoice to its quotation. A restore leaves existing quotations in place but unlinks any that were converted, so such a quotation could be converted again.
 - Recurring profiles substitute a fixed default line for absent/invalid items; profiles need explicit review before use with real customers.
 - Credit and debit notes raised before the note series existed keep their original numbers, such as `CN-INV-0001-5762`. These are often longer than 16 characters, so the GST portal rejects them, and they are left unchanged because they are part of the record already issued. Their note date was set from when they were saved, converted to IST. A business that reported such notes should correct them with its accountant, in the next GSTR-1 or by amendment.
 - A business whose stored invoice prefix already makes numbers longer than 16 characters can keep raising invoices, but must shorten the prefix or padding before Settings → Invoice will save again. Credit and debit notes are refused until their series fits.
@@ -408,6 +433,7 @@ These limits come from the current source, including places where module comment
 | Organization settings | [settings.ex](../lib/quantum_billing/settings.ex), [organization.ex](../lib/quantum_billing/settings/organization.ex), [installation_settings.ex](../lib/quantum_billing/installation_settings.ex) |
 | Clients | [clients.ex](../lib/quantum_billing/clients.ex), [client.ex](../lib/quantum_billing/clients/client.ex) |
 | Invoice creation and money | [invoices.ex](../lib/quantum_billing/invoices.ex), [invoice.ex](../lib/quantum_billing/invoices/invoice.ex), [invoice_item.ex](../lib/quantum_billing/invoices/invoice_item.ex), [money.ex](../lib/quantum_billing/money.ex), [currency.ex](../lib/quantum_billing/currency.ex) |
+| Quotations | [quotations.ex](../lib/quantum_billing/quotations.ex), [quotation.ex](../lib/quantum_billing/quotations/quotation.ex), [quotation_item.ex](../lib/quantum_billing/quotations/quotation_item.ex), [quotation_layout.ex](../lib/quantum_billing_web/invoice_doc/quotation_layout.ex), [quotations live views](../lib/quantum_billing_web/live/quotations/), [document_form_components.ex](../lib/quantum_billing_web/components/document_form_components.ex) |
 | Tax regimes and VAT | [tax.ex](../lib/quantum_billing/tax.ex), [gst.ex](../lib/quantum_billing/tax/gst.ex), [vat.ex](../lib/quantum_billing/tax/vat.ex), [tax_rates.ex](../lib/quantum_billing/tax_rates.ex), [gst_only.ex](../lib/quantum_billing_web/gst_only.ex) |
 | Custom fields | [custom_fields.ex](../lib/quantum_billing/custom_fields.ex), [field_definition.ex](../lib/quantum_billing/custom_fields/field_definition.ex), [custom_field_components.ex](../lib/quantum_billing_web/components/custom_field_components.ex), [data_model_live.ex](../lib/quantum_billing_web/live/settings/data_model_live.ex) |
 | Registration and e-way bills | [e_invoice.ex](../lib/quantum_billing/e_invoice.ex), [irp_client.ex](../lib/quantum_billing/e_invoice/irp_client.ex), [e_way_bills.ex](../lib/quantum_billing/e_way_bills.ex), [nic_client.ex](../lib/quantum_billing/e_way_bills/nic_client.ex) |

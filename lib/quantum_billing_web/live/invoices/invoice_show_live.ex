@@ -18,6 +18,7 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
   alias QuantumBilling.Invoices
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Payments.QRCode
+  alias QuantumBilling.Quotations
   alias QuantumBilling.Settings
   alias QuantumBilling.Tax
   alias QuantumBilling.Templates
@@ -45,6 +46,10 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
          |> assign(:page_title, invoice.invoice_number)
          |> assign(:active_nav, :invoices)
          |> assign(:invoice, invoice)
+         |> assign(
+           :quotation,
+           invoice.quotation_id && Quotations.get_quotation(invoice.quotation_id)
+         )
          # Archived too: an issued invoice keeps the values it was issued with.
          |> assign(
            :custom_definitions,
@@ -275,7 +280,18 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
 
       <.header>
         {@invoice.invoice_number}
-        <:subtitle>{@invoice.invoice_type}</:subtitle>
+        <:subtitle>
+          {@invoice.invoice_type}
+          <.link
+            :if={@quotation}
+            id="invoice-quotation-link"
+            navigate={~p"/quotations/#{@quotation}"}
+            class="ml-2 inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-500/20 dark:text-violet-300"
+          >
+            <.icon name="hero-clipboard-document-list" class="size-3.5" />
+            From quotation {@quotation.number}
+          </.link>
+        </:subtitle>
 
         <:actions>
           <button

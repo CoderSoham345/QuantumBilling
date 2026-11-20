@@ -751,6 +751,13 @@ defmodule QuantumBillingWeb.Layouts do
         color: "text-indigo-600 dark:text-indigo-400"
       },
       %{
+        key: :quotations,
+        label: "Quotations",
+        path: ~p"/quotations",
+        icon: "hero-clipboard-document-list",
+        color: "text-violet-600 dark:text-violet-400"
+      },
+      %{
         key: :clients,
         label: "Clients",
         path: ~p"/clients",

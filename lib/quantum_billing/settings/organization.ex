@@ -63,6 +63,10 @@ defmodule QuantumBilling.Settings.Organization do
     field :debit_note_prefix, :string, default: "DN"
     field :debit_note_next_number, :integer, default: 1
 
+    # Quotations run their own series too; they are not tax documents.
+    field :quotation_prefix, :string, default: "QT"
+    field :quotation_next_number, :integer, default: 1
+
     field :ewb_transport_mode, :string, default: "Road"
     field :ewb_transporter_id, :string
     field :ewb_threshold_value, Paise, default: 5_000_000
@@ -140,13 +144,15 @@ defmodule QuantumBilling.Settings.Organization do
 
   @invoice ~w(invoice_prefix invoice_next_number invoice_number_padding
               invoice_due_days invoice_terms credit_note_prefix credit_note_next_number
-              debit_note_prefix debit_note_next_number)a
+              debit_note_prefix debit_note_next_number quotation_prefix
+              quotation_next_number)a
 
   # Each numbering series as {prefix field, next number field}.
   @series [
     {:invoice_prefix, :invoice_next_number},
     {:credit_note_prefix, :credit_note_next_number},
-    {:debit_note_prefix, :debit_note_next_number}
+    {:debit_note_prefix, :debit_note_next_number},
+    {:quotation_prefix, :quotation_next_number}
   ]
 
   @bank ~w(bank_account_name bank_name bank_account_number bank_ifsc bank_branch)a

@@ -116,6 +116,8 @@ defmodule QuantumBillingWeb.Router do
     get "/reports/gstr1/export", GSTR1ExportController, :export_gstr1
     get "/invoices/:id/pdf", InvoicePdfController, :show
     get "/invoices/:id/pdf/download", InvoicePdfController, :download
+    get "/quotations/:id/pdf", QuotationPdfController, :show
+    get "/quotations/:id/download", QuotationPdfController, :download
     get "/e-way-bills/export", EWayBillExportController, :export
     get "/e-way-bills/:id/print", EWayBillPdfController, :show
     get "/e-way-bills/:id/print/download", EWayBillPdfController, :download
@@ -152,6 +154,11 @@ defmodule QuantumBillingWeb.Router do
       # Before "/invoices/:id", or "new" and "<id>/edit" would both match it.
       live "/invoices/:id/edit", InvoiceNewLive, :edit
       live "/invoices/:id", InvoiceShowLive, :show
+      live "/quotations", QuotationsLive, :index
+      live "/quotations/new", QuotationNewLive, :new
+      # Before "/quotations/:id", as for invoices.
+      live "/quotations/:id/edit", QuotationNewLive, :edit
+      live "/quotations/:id", QuotationShowLive, :show
       live "/clients", ClientsLive, :index
       live "/clients/new", ClientNewLive, :new
       live "/clients/import", ClientImportLive, :new

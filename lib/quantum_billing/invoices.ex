@@ -507,8 +507,16 @@ defmodule QuantumBilling.Invoices do
 
   defp present(_value), do: nil
 
-  @doc "Creates an invoice with the next number in the series."
-  def create_invoice(attrs) do
+  @doc """
+  Creates an invoice with the next number in the series.
+
+  With `quotation_id:` the invoice is the conversion of that quotation: the
+  quotation row is locked, must be Accepted and not yet converted, and the
+  invoice is linked to it. Otherwise `{:error, :quotation_not_convertible}`.
+  `user_id:` is recorded on the conversion's audit row.
+  """
+  def create_invoice(attrs, opts \\ []) do
+    quotation_id = Keyword.get(opts, :quotation_id)
     # Outside the transaction: creating the row inside it deadlocks concurrent callers.
     organization = Settings.ensure_organization() || %Organization{}
 
@@ -523,7 +531,10 @@ defmodule QuantumBilling.Invoices do
         organization -> {:ok, organization}
       end
     end)
-    |> Multi.insert(:invoice, fn %{organization: locked} ->
+    |> Multi.run(:quotation, fn repo, _changes ->
+      lock_convertible_quotation(repo, quotation_id)
+    end)
+    |> Multi.insert(:invoice, fn %{organization: locked, quotation: quotation} ->
       trusted =
         %{}
         |> with_number(locked)
@@ -531,6 +542,7 @@ defmodule QuantumBilling.Invoices do
         |> with_layout_snapshot(template, organization)
         |> Map.put(:default_currency, Organization.currency_code(locked))
         |> Map.merge(Organization.invoice_tax_snapshot(locked))
+        |> with_quotation(quotation)
 
       Invoice.changeset(%Invoice{}, attrs, trusted)
     end)
@@ -544,8 +556,9 @@ defmodule QuantumBilling.Invoices do
     end)
     |> Repo.transaction()
     |> case do
-      {:ok, %{invoice: invoice}} ->
+      {:ok, %{invoice: invoice, quotation: quotation}} ->
         broadcast_change(invoice, :invoice_changed)
+        audit_conversion(quotation, invoice, Keyword.get(opts, :user_id))
 
         Webhooks.publish("invoice.created", invoice.id, %{
           invoice_id: invoice.id,
@@ -576,6 +589,40 @@ defmodule QuantumBilling.Invoices do
       {:error, _step, reason, _changes} ->
         {:error, reason}
     end
+  end
+
+  defp lock_convertible_quotation(_repo, nil), do: {:ok, nil}
+
+  # Locked so two saves cannot both convert it; the unique index is the backstop.
+  defp lock_convertible_quotation(repo, quotation_id) do
+    quotation =
+      repo.one(
+        from q in QuantumBilling.Quotations.Quotation,
+          where: q.id == ^quotation_id,
+          lock: "FOR UPDATE"
+      )
+
+    # Binned invoices count: the unique index covers them too.
+    converted? = repo.exists?(from i in Invoice, where: i.quotation_id == ^quotation_id)
+
+    case quotation do
+      %{status: "Accepted"} when not converted? -> {:ok, quotation}
+      _other -> {:error, :quotation_not_convertible}
+    end
+  end
+
+  defp with_quotation(trusted, nil), do: trusted
+  defp with_quotation(trusted, quotation), do: Map.put(trusted, :quotation_id, quotation.id)
+
+  defp audit_conversion(nil, _invoice, _user_id), do: :ok
+
+  defp audit_conversion(quotation, invoice, user_id) do
+    Audit.log_event(:convert_quotation, "Quotation", quotation.id,
+      user_id: user_id,
+      details: %{quotation_number: quotation.number, invoice_number: invoice.invoice_number}
+    )
+
+    :ok
   end
 
   @doc """
@@ -845,12 +892,16 @@ defmodule QuantumBilling.Invoices do
     }
   end
 
-  defp resolve_template(attrs) do
+  @doc "The design a new document is issued under: the chosen one, else the default."
+  def resolve_template(attrs) do
     case template_id_from(attrs) do
       nil -> Templates.default_template()
       id -> Templates.get_template(id) || Templates.default_template()
     end
   end
+
+  @doc "The template id and frozen layout a new document records for `template`."
+  def layout_snapshot(template), do: with_layout_snapshot(%{}, template, nil)
 
   defp with_layout_snapshot(trusted, %{id: id, layout_xml: xml}, _organization) do
     Map.merge(trusted, %{template_id: id, layout_xml: xml})

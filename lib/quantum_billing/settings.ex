@@ -135,4 +135,16 @@ defmodule QuantumBilling.Settings do
       organization.invoice_number_padding
     )
   end
+
+  @doc """
+  The number the next quotation would get, e.g. `"QT-0001"`. Quotations use
+  the invoice padding.
+  """
+  def next_quotation_number(%Organization{} = organization) do
+    Organization.document_number(
+      organization.quotation_prefix || "QT",
+      organization.quotation_next_number || 1,
+      organization.invoice_number_padding
+    )
+  end
 end
