@@ -157,6 +157,102 @@ defmodule QuantumBilling.PaymentsTest do
     end
   end
 
+  describe "a cancelled invoice" do
+    import Swoosh.TestAssertions
+
+    alias QuantumBilling.Notifications.Notification
+
+    setup do
+      invoice =
+        Repo.insert!(%Invoice{
+          invoice_number: "INV-9960",
+          invoice_date: ~D[2026-03-01],
+          place_of_supply: "Maharashtra",
+          company_state: "Maharashtra",
+          client_name: "Epsilon Ltd",
+          client_email: "accounts@epsilon.test",
+          grand_total: 1_000_000,
+          status: "Cancelled",
+          razorpay_payment_link_id: "plink_old"
+        })
+
+      %{invoice: invoice}
+    end
+
+    defp old_link_paid do
+      %{
+        "event" => "payment_link.paid",
+        "payload" => %{
+          "payment_link" => %{
+            "entity" => %{
+              "id" => "plink_old",
+              "reference_id" => "INV-9960",
+              "amount_paid" => 1_000_000,
+              "currency" => "INR"
+            }
+          },
+          "payment" => %{"entity" => %{"id" => "pay_9960"}}
+        }
+      }
+    end
+
+    test "a payment through its old link is refused, audited and raised", %{invoice: invoice} do
+      assert {:error, :invoice_cancelled} = Payments.process_razorpay_webhook(old_link_paid())
+
+      assert %Invoice{status: "Cancelled", razorpay_payment_id: nil} =
+               Repo.get(Invoice, invoice.id)
+
+      assert Repo.exists?(
+               from l in QuantumBilling.Audit.AuditLog,
+                 where: l.action == "payment_rejected" and l.resource_id == ^to_string(invoice.id)
+             )
+
+      assert %Notification{severity: "error", title: title, body: body} =
+               Repo.get_by(Notification, dedupe_key: "payment_rejected:pay_9960")
+
+      assert title == "Payment received for cancelled INV-9960"
+      assert body =~ "Refund payment pay_9960"
+
+      assert_no_email_sent()
+    end
+
+    test "a captured payment naming it is refused", %{invoice: invoice} do
+      payload = %{
+        "event" => "payment.captured",
+        "payload" => %{
+          "payment" => %{
+            "entity" => %{
+              "id" => "pay_c9960",
+              "amount" => 1_000_000,
+              "currency" => "INR",
+              "notes" => %{"invoice_number" => "INV-9960"}
+            }
+          }
+        }
+      }
+
+      assert {:error, :invoice_cancelled} = Payments.process_razorpay_webhook(payload)
+      assert Repo.get(Invoice, invoice.id).status == "Cancelled"
+    end
+
+    test "reconcile_payment/3 will not mark it paid", %{invoice: invoice} do
+      assert {:error, :invoice_cancelled} = Payments.reconcile_payment(invoice, "pay_direct")
+      assert Repo.get(Invoice, invoice.id).status == "Cancelled"
+    end
+
+    test "a stale copy loaded before the cancel is not marked paid", %{invoice: invoice} do
+      stale = %{invoice | status: "Draft"}
+
+      assert {:error, :invoice_cancelled} = Payments.reconcile_payment(stale, "pay_stale")
+      assert Repo.get(Invoice, invoice.id).status == "Cancelled"
+    end
+
+    test "gets no new payment link", %{invoice: invoice} do
+      refute Payments.open_for_payment?(invoice)
+      assert {:error, :cancelled} = Payments.generate_payment_link(invoice)
+    end
+  end
+
   describe "another currency" do
     setup do
       invoice =

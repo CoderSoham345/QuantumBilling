@@ -707,6 +707,10 @@ defmodule QuantumBilling.Invoices do
 
   Refused with `:already_cancelled`, `:paid` (needs a credit note),
   `:irn_registered` or `:live_e_way_bill`. `opts` carries audit fields.
+
+  A Razorpay payment link is cancelled in the background
+  (`QuantumBilling.Workers.PaymentLinkCancelWorker`), so an outage there does
+  not hold up the cancellation.
   """
   def cancel_invoice(%Invoice{} = invoice, reason, opts \\ []) when is_binary(reason) do
     cond do
@@ -723,8 +727,7 @@ defmodule QuantumBilling.Invoices do
         {:error, :live_e_way_bill}
 
       true ->
-        with {:ok, cancelled} <-
-               invoice |> Ecto.Changeset.change(status: "Cancelled") |> Repo.update() do
+        with {:ok, cancelled} <- mark_cancelled(invoice) do
           QuantumBilling.Audit.log_event(
             :invoice_cancelled,
             "Invoice",
@@ -741,6 +744,37 @@ defmodule QuantumBilling.Invoices do
         end
     end
   end
+
+  # Locked and re-read, as Payments.reconcile_payment/3 does, so a payment that
+  # lands at the same moment cannot be overwritten by the cancel, or the reverse.
+  defp mark_cancelled(%Invoice{id: id} = invoice) do
+    Repo.transaction(fn ->
+      case Repo.one(from(i in Invoice, where: i.id == ^id, lock: "FOR UPDATE", select: i.status)) do
+        "Paid" -> Repo.rollback(:paid)
+        "Cancelled" -> Repo.rollback(:already_cancelled)
+        _open -> cancel_and_queue_link(invoice)
+      end
+    end)
+  end
+
+  defp cancel_and_queue_link(invoice) do
+    with {:ok, cancelled} <-
+           invoice |> Ecto.Changeset.change(status: "Cancelled") |> Repo.update(),
+         {:ok, _job} <- queue_payment_link_cancel(cancelled) do
+      cancelled
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp queue_payment_link_cancel(%Invoice{razorpay_payment_link_id: link_id} = invoice)
+       when is_binary(link_id) and link_id != "" do
+    %{"invoice_id" => invoice.id}
+    |> QuantumBilling.Workers.PaymentLinkCancelWorker.new()
+    |> Oban.insert()
+  end
+
+  defp queue_payment_link_cancel(_invoice), do: {:ok, :no_link}
 
   @doc """
   Moves an invoice to the Bin. Nothing is removed and the number is not reused.

@@ -164,6 +164,12 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
            QuantumBilling.Payments.unavailable_message(socket.assigns.invoice)
          )}
 
+      {:error, :cancelled} ->
+        {:noreply, put_flash(socket, :error, "A cancelled invoice cannot be paid online.")}
+
+      {:error, :already_paid} ->
+        {:noreply, put_flash(socket, :error, "This invoice is already paid.")}
+
       {:error, reason} ->
         {:noreply,
          put_flash(socket, :error, "Failed to generate Payment Link: #{inspect(reason)}")}
@@ -392,7 +398,8 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
         </div>
 
         <div
-          :if={@invoice.razorpay_payment_url}
+          :if={@invoice.razorpay_payment_url && @invoice.status != "Cancelled"}
+          id="payment-link"
           class="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
         >
           <div class="space-y-1">
@@ -757,7 +764,10 @@ defmodule QuantumBillingWeb.InvoiceShowLive do
           <h3 class={drawer_group_class()}>Payments</h3>
 
           <.drawer_item
-            :if={!@invoice.razorpay_payment_url and QuantumBilling.Payments.online_payable?(@invoice)}
+            :if={
+              !@invoice.razorpay_payment_url and QuantumBilling.Payments.open_for_payment?(@invoice) and
+                QuantumBilling.Payments.online_payable?(@invoice)
+            }
             id="drawer-payment-link"
             icon="hero-qr-code"
             label="Razorpay / UPI Link"

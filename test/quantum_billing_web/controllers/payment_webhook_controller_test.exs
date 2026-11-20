@@ -169,6 +169,17 @@ defmodule QuantumBillingWeb.PaymentWebhookControllerTest do
     assert Repo.get(Invoice, invoice.id).status == "Paid"
   end
 
+  test "a payment through the old link of a cancelled invoice is refused", %{conn: conn} do
+    invoice = invoice_fixture("INV-7011")
+    {:ok, _cancelled} = QuantumBilling.Invoices.cancel_invoice(invoice, "Duplicate order")
+    body = Jason.encode!(payload(invoice.invoice_number))
+
+    conn = post_signed(conn, body, event_id: "evt_7011")
+
+    assert json_response(conn, 422)["reason"] == "invoice_cancelled"
+    assert Repo.get(Invoice, invoice.id).status == "Cancelled"
+  end
+
   test "an under-payment is refused and the invoice stays unpaid", %{conn: conn} do
     invoice = invoice_fixture("INV-7010")
 
