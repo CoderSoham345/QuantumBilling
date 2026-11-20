@@ -13,6 +13,7 @@ defmodule QuantumBilling.Backup do
 
   alias QuantumBilling.Audit.AuditLog
   alias QuantumBilling.Clients.Client
+  alias QuantumBilling.Compliance.Filing, as: ComplianceFiling
   alias QuantumBilling.Compliance.Task, as: ComplianceTask
   alias QuantumBilling.CreditNotes.CreditNote
   alias QuantumBilling.CustomFields.FieldDefinition
@@ -128,6 +129,9 @@ defmodule QuantumBilling.Backup do
                              completed_at remind_days_before remind_at repeat reminded_at
                              inserted_at)a
 
+  # Returns marked filed. No author, for the same reason as tasks.
+  @compliance_filing_fields ~w(id type period_key filed_on arn note inserted_at)a
+
   # Parents before children, so foreign keys resolve on restore.
   @sections [
     {:field_definitions, FieldDefinition, @field_definition_fields},
@@ -142,6 +146,7 @@ defmodule QuantumBilling.Backup do
     {:recurring_profiles, RecurringProfile, @profile_fields},
     {:credit_notes, CreditNote, @credit_note_fields},
     {:compliance_tasks, ComplianceTask, @compliance_task_fields},
+    {:compliance_filings, ComplianceFiling, @compliance_filing_fields},
     {:audit_logs, AuditLog, @audit_fields}
   ]
 
@@ -230,6 +235,7 @@ defmodule QuantumBilling.Backup do
           # Children first.
           Repo.delete_all(AuditLog)
           Repo.delete_all(ComplianceTask)
+          Repo.delete_all(ComplianceFiling)
           Repo.delete_all(CreditNote)
           Repo.delete_all(InvoiceItem)
           Repo.delete_all(PartBUpdate)
@@ -253,7 +259,7 @@ defmodule QuantumBilling.Backup do
           Enum.each(
             ~w(field_definitions tax_rates clients invoices invoice_items e_way_bills e_way_bill_part_b_updates
                invoice_templates design_assets recurring_profiles credit_notes compliance_tasks
-               audit_logs),
+               compliance_filings audit_logs),
             &resync_sequence/1
           )
 

@@ -4,6 +4,7 @@ defmodule QuantumBilling.BackupTest do
   alias QuantumBilling.Backup
   alias QuantumBilling.Calendars.Connection
   alias QuantumBilling.Clients
+  alias QuantumBilling.Compliance.Filing
   alias QuantumBilling.Compliance.Task
   alias QuantumBilling.EWayBills
   alias QuantumBilling.Invoices
@@ -337,6 +338,33 @@ defmodule QuantumBilling.BackupTest do
       assert restored.kind == "reminder"
       assert restored.remind_days_before == 3
       assert restored.created_by_id == nil
+    end
+
+    test "brings back returns marked filed, without saying who marked them" do
+      user = QuantumBilling.AccountsFixtures.user_fixture()
+
+      filing =
+        Repo.insert!(%Filing{
+          type: "GSTR-3B",
+          period_key: "042026",
+          filed_on: ~D[2026-05-19],
+          arn: "AA2705261234567",
+          note: "Filed by the accountant",
+          user_id: user.id
+        })
+
+      json = Backup.export_json()
+      Repo.delete_all(Filing)
+
+      assert {:ok, counts} = Backup.restore_json(json)
+      assert counts.compliance_filings == 1
+
+      restored = Repo.get!(Filing, filing.id)
+      assert {restored.type, restored.period_key} == {"GSTR-3B", "042026"}
+      assert restored.filed_on == ~D[2026-05-19]
+      assert restored.arn == "AA2705261234567"
+      assert restored.note == "Filed by the accountant"
+      assert restored.user_id == nil
     end
 
     test "calendar logins stay out of the file, and survive a restore" do

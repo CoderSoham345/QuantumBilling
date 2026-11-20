@@ -17,7 +17,7 @@ One PostgreSQL database holds shared account data in `public` and separate busin
 | `public` | `rate_limits` | Rate-limit counters shared by every server (UNLOGGED). |
 | `public` | `oban_jobs`, `oban_peers` | Shared background-job storage and leader coordination. |
 | `public` | `schema_migrations` | Ecto's record of shared/public migrations. |
-| Each `biz_N` | `organization_settings`, `clients`, `invoices`, `invoice_items`, `credit_notes`, `e_way_bills`, `e_way_bill_part_b_updates`, `recurring_profiles`, `invoice_templates`, `design_assets`, `notifications`, `email_deliveries`, `audit_logs`, `webhook_events`, `webhook_endpoints`, `webhook_deliveries`, `compliance_tasks`, `calendar_connections`, `calendar_event_links` | The selected business's operational data. |
+| Each `biz_N` | `organization_settings`, `clients`, `invoices`, `invoice_items`, `credit_notes`, `e_way_bills`, `e_way_bill_part_b_updates`, `recurring_profiles`, `invoice_templates`, `design_assets`, `notifications`, `email_deliveries`, `audit_logs`, `webhook_events`, `webhook_endpoints`, `webhook_deliveries`, `compliance_tasks`, `compliance_filings`, `calendar_connections`, `calendar_event_links` | The selected business's operational data. |
 | Each `biz_N` | `schema_migrations` | Ecto's record of tenant migrations for that schema. |
 
 Business tables do not carry a `business_id` column. Their schema establishes ownership. Consequently, invoice ID `42` in `biz_1` and invoice ID `42` in `biz_2` are different invoices. Invoice numbers, GSTIN uniqueness, public invoice tokens, and webhook event uniqueness are enforced within each business schema.
@@ -657,6 +657,24 @@ Tasks and reminders added by hand on the Compliance page. GST obligations are ca
 
 Source: [task schema](../lib/quantum_billing/compliance/task.ex), [compliance context](../lib/quantum_billing/compliance.ex).
 
+### `compliance_filings`
+
+GST returns marked as filed on the Compliance page. Obligations are not stored, so a filing names its obligation by `type` and `period_key`. A return with a row here shows as Filed; deleting the row (Undo) puts it back to Pending or Overdue.
+
+| Columns | SQL type | Required/default |
+| --- | --- | --- |
+| `type` | `varchar(255)` | Required; the return, such as `GSTR-1`, `GSTR-3B`, `CMP-08`, `GSTR-9` |
+| `period_key` | `varchar(255)` | Required; the obligation's period as `MMYYYY`: the month for a monthly return, the last month of the quarter for CMP-08, March of the financial year for an annual return |
+| `filed_on` | `date` | Required; not after the business's today, not before 2017-07-01 (checked in the changeset) |
+| `arn` | `varchar(255)` | Nullable; 15 capital letters or digits when present, stored without spaces |
+| `note` | `text` | Nullable; up to 500 characters |
+| `user_id` | `bigint` FK to `public.users` | Nullable; who marked it, set to null when the user is deleted |
+| `inserted_at`, `updated_at` | `timestamp(0)` | Required |
+
+`(type, period_key)` is unique, so a return is marked once. `type`, `period_key` and `user_id` are set in code, and `mark_filed/4` refuses a pair the calendar does not generate for this financial year or the last. Marking and undoing write `mark_compliance_filed` and `undo_compliance_filed` audit rows.
+
+Source: [filing schema](../lib/quantum_billing/compliance/filing.ex), [compliance context](../lib/quantum_billing/compliance.ex).
+
 ### `calendar_connections`
 
 One row per provider (`google`, `caldav`, `feed`), enforced by a unique index on `provider`.
@@ -828,7 +846,7 @@ Sources: [schema-transfer migration](../priv/repo/migrations/20261015115410_move
 
 The application's JSON export is a business-data export, not a full PostgreSQL backup. Format version `3.2` stores money in minor units and can upgrade the supported older `2.0`, `2.1`, `3.0` and `3.1` files on restore. Files older than `3.2` were written before VAT, so restore treats every record in them as GST: `tax_regime` `gst`, `vat_amount` 0, an empty `tax_breakdown`, no reverse charge, rounding on, and client `country` `IN`. Files without custom fields restore with `custom_fields` `{}`.
 
-The export includes selected organization settings (with the tax regime, VAT number and country, inclusive pricing and rounding) plus, in restore order, field definitions, tax rates, clients, templates, design-asset records, invoices, invoice items, e-way bills, Part-B updates, recurring profiles, credit notes, compliance tasks, and audit logs. Every record type that has `custom_fields` exports it. Restore drops a field definition whose object, key or type is not valid. It retains deleted/archived markers. It omits protected credentials, calendar connections and their event links, users, sessions, TOTP enrolments, memberships, business definitions, installation settings, Oban jobs/peers, notifications, email delivery history, and incoming webhook events. Uploaded logo and design-image bytes are not embedded; a path reference alone is not an asset backup. Restore drops `design_assets` rows whose path or kind is malformed. A restored row makes that business the owner of the path, which is the same trust a restore already gives `doc_logo_path`; paths are unguessable content hashes, so only someone who already has the file name can claim it this way.
+The export includes selected organization settings (with the tax regime, VAT number and country, inclusive pricing and rounding) plus, in restore order, field definitions, tax rates, clients, templates, design-asset records, invoices, invoice items, e-way bills, Part-B updates, recurring profiles, credit notes, compliance tasks, compliance filings (without `user_id`, as tasks leave out their author), and audit logs. A file written before filings existed restores with none. Every record type that has `custom_fields` exports it. Restore drops a field definition whose object, key or type is not valid. It retains deleted/archived markers. It omits protected credentials, calendar connections and their event links, users, sessions, TOTP enrolments, memberships, business definitions, installation settings, Oban jobs/peers, notifications, email delivery history, and incoming webhook events. Uploaded logo and design-image bytes are not embedded; a path reference alone is not an asset backup. Restore drops `design_assets` rows whose path or kind is malformed. A restored row makes that business the owner of the path, which is the same trust a restore already gives `doc_logo_path`; paths are unguessable content hashes, so only someone who already has the file name can claim it this way.
 
 Export streams explicit field maps inside one transaction. Restore replaces the listed business tables in one transaction, inserts parents before children in batches, and resynchronizes primary-key sequences. A failure rolls back the transaction. Omitted credentials must be configured separately; the file is not a copy of the application's encryption-key environment.
 

@@ -323,9 +323,11 @@ The compliance page generates a calendar from code-defined rules for GSTR-1, GST
 
 The tracked set depends on organization registration settings: a VAT business tracks no GST returns, even with a GSTIN left in its settings; no GSTIN yields an empty tracked set; composition settings select the quarterly composition row instead of monthly regular returns; annual rows are also generated. The dashboard currently uses the broader calendar function, so it can display obligations different from the registration-filtered page/reminder set.
 
-There is no persisted filing table or filing-status integration, so obligations become Pending or Overdue from dates alone and never Filed. A return already filed externally can still appear overdue here. Reminders are calendar prompts, not proof that a return is unfiled.
+A return is Pending until its due date and Overdue after it, until someone marks it filed. Owners and staff do this from the return's detail panel with **Mark as filed**: they enter the date it was filed (today or earlier, not before July 2017), and optionally the 15-character ARN from the GST portal and a note. The return then shows Filed with that date, counts as filed in the summary and the Filed filter, stops raising reminders, and drops out of synced calendars. **Undo** in the same panel puts it back to Pending or Overdue, and its reminders and calendar event return. Both actions are recorded in the audit trail with who did them, the return, the period, the date and the ARN.
 
-Owners and staff can add their own tasks and reminders to the page. These are stored, can be edited, completed and deleted, and post one notification when their reminder falls due, whatever the filing-reminder setting says. Calculated GST obligations stay read-only.
+Marking a return filed is a record kept in this application, not a check against the GST portal: nothing is fetched from or sent to GSTN, and the app does not verify the ARN. Filings are allowed for this financial year's and last year's returns. Overdue notifications sent before a return was marked stay in the inbox.
+
+Owners and staff can add their own tasks and reminders to the page. These are stored, can be edited, completed and deleted, and post one notification when their reminder falls due, whatever the filing-reminder setting says. Calculated GST obligations cannot be edited or deleted; marking them filed is the only change they take.
 
 Owners can send tasks and deadlines to Google Calendar or a CalDAV server, or publish a private feed URL that any calendar app can subscribe to. This is one way: changes made in the calendar do not come back, and disconnecting leaves events already sent in place. The feed URL works without signing in, so treat it like a password and regenerate it if it leaks.
 
@@ -359,7 +361,7 @@ The Bin at `/bin` brings together deleted invoices, clients, e-way bills, recurr
 
 Restoration can fail when a business identity was reused: another client may now hold the same GSTIN, or an invoice may have acquired another live e-way bill. Permanent deletion is only offered for records already in the Bin. Purging an invoice cascades its related invoice items, notes, and e-way bills; referenced templates and clients linked to credit notes have additional restrictions.
 
-Backup export writes versioned JSON (version 3.2) containing organization data with the tax regime, custom field definitions, VAT rates, clients, templates, invoices/items, e-way bills/Part-B history, recurring profiles, notes, and audit entries, with each record's custom field values. It retains Bin state and stored document values. Older backup files still restore; their records come back as GST with no custom field values. Restore replaces those business records in a transaction and resynchronizes identifiers; it is a replacement operation, not a merge or import of a few customers.
+Backup export writes versioned JSON (version 3.2) containing organization data with the tax regime, custom field definitions, VAT rates, clients, templates, invoices/items, e-way bills/Part-B history, recurring profiles, notes, compliance tasks, returns marked filed, and audit entries, with each record's custom field values. It retains Bin state and stored document values. Older backup files still restore; their records come back as GST with no custom field values. Restore replaces those business records in a transaction and resynchronizes identifiers; it is a replacement operation, not a merge or import of a few customers.
 
 Credential values are omitted from the backup file. Accounts, authentication sessions, and two-factor enrollment are not exported/restored. Notifications, mail/webhook ledgers, Oban jobs, and logo file bytes are also outside the business JSON. Preserve the deployment database and upload storage separately when a complete installation recovery is required. Reconfigure credentials and verify logo availability after moving data to a new environment.
 
@@ -375,7 +377,7 @@ The backup download route requires an owner. The current restore handler is on t
 6. Generate required transport documents and registration requests, then verify the real portal outcome independently when using live operations.
 7. Review payment events, outstanding balances, and any rejected-payment notifications.
 8. Review recurring profiles before their due dates, check generated Drafts, and investigate failed background jobs or mail.
-9. Export reviewed report/return data for accounting work; maintain filing proof outside this application while filing records remain unimplemented.
+9. Export reviewed report/return data for accounting work, mark each return filed once it is filed on the GST portal, and keep the portal's acknowledgement as filing proof.
 10. Keep tested database/upload backups in addition to business JSON exports and use the Bin before permanent deletion.
 
 ## 18. Current implementation limits
@@ -384,7 +386,7 @@ The main boundaries to account for during acceptance testing are:
 
 - Business schemas, membership-based roles, authenticated business selection/switching, team screens, business-scoped PubSub, public slug routes, payment callbacks, business-aware background jobs and sweeps, and installation security settings are implemented. Deleting a business (as opposed to archiving it) is not.
 - Demo IRNs and e-way bills are generated locally and are not filed. They are labelled as demo wherever they appear; Settings → Integrations shows the current mode of each portal.
-- Compliance dates and HSN rates are static application rules, filing records are absent, and exports are files rather than submission workflows.
+- Compliance dates and HSN rates are static application rules, returns are marked filed by hand rather than read from the GST portal, and exports are files rather than submission workflows.
 - Cess/TDS, complete multi-currency/export accounting, purchase ITC, bank reconciliation, inventory, and a general ledger are not implemented as complete business systems.
 - VAT covers invoicing, rates, credit notes and reports. There is no VAT return filing or e-invoicing for any VAT country, no currency conversion, and no three-decimal currencies (KWD, BHD, OMR).
 - Custom fields extend the six existing record types. There are no custom record types, no field that links to another record, and no custom fields in webhook payloads or on credit notes and e-way bills in the API.
@@ -411,6 +413,6 @@ These limits come from the current source, including places where module comment
 | Registration and e-way bills | [e_invoice.ex](../lib/quantum_billing/e_invoice.ex), [irp_client.ex](../lib/quantum_billing/e_invoice/irp_client.ex), [e_way_bills.ex](../lib/quantum_billing/e_way_bills.ex), [nic_client.ex](../lib/quantum_billing/e_way_bills/nic_client.ex) |
 | Payment and delivery | [payments.ex](../lib/quantum_billing/payments.ex), [razorpay_client.ex](../lib/quantum_billing/payments/razorpay_client.ex), [mail.ex](../lib/quantum_billing/mail.ex), [payment_webhook_controller.ex](../lib/quantum_billing_web/controllers/payment_webhook_controller.ex) |
 | Recurring and adjustments | [recurring.ex](../lib/quantum_billing/recurring.ex), [credit_notes.ex](../lib/quantum_billing/credit_notes.ex) |
-| Reporting and compliance | [reports.ex](../lib/quantum_billing/reports.ex), [compliance.ex](../lib/quantum_billing/compliance.ex), [gstn_exporter.ex](../lib/quantum_billing/compliance/gstn_exporter.ex), [hsn_finder.ex](../lib/quantum_billing/hsn_finder.ex) |
+| Reporting and compliance | [reports.ex](../lib/quantum_billing/reports.ex), [compliance.ex](../lib/quantum_billing/compliance.ex), [filing.ex](../lib/quantum_billing/compliance/filing.ex), [gstn_exporter.ex](../lib/quantum_billing/compliance/gstn_exporter.ex), [hsn_finder.ex](../lib/quantum_billing/hsn_finder.ex) |
 | Designs and recovery | [templates.ex](../lib/quantum_billing/templates.ex), [bin_live.ex](../lib/quantum_billing_web/live/bin/bin_live.ex), [backup.ex](../lib/quantum_billing/backup.ex) |
 | Notifications and retention | [notifications.ex](../lib/quantum_billing/notifications.ex), [events.ex](../lib/quantum_billing/events.ex), [audit_prune_worker.ex](../lib/quantum_billing/workers/audit_prune_worker.ex) |
