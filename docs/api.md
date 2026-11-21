@@ -43,6 +43,8 @@ where.
 | `clients:read` | `GET /clients`, `GET /clients/:id` — including contact details |
 | `clients:write` | `POST /clients` |
 | `e_way_bills:read` | `GET /e-way-bills`, `GET /e-way-bills/:id` |
+| `quotations:read` | `GET /quotations`, `GET /quotations/:id` |
+| `quotations:write` | `POST /quotations`, `POST /quotations/:id/send`, `/accept` and `/decline`; adds `public_url` (the client's link) to quotations. Whoever holds that link can accept the quotation |
 
 `GET /me` works with any key.
 
@@ -169,8 +171,8 @@ is GST-only and is refused with `409 gst_only` under VAT.
 
 ## Custom fields
 
-Owners add their own fields at Settings › Data model. Clients, invoices, invoice lines
-and e-way bills carry them in a `custom_fields` object, keyed by each field's
+Owners add their own fields at Settings › Data model. Clients, invoices, invoice lines,
+quotations, quotation lines and e-way bills carry them in a `custom_fields` object, keyed by each field's
 `key` (fixed when the field is created). Only fields marked **Included in the
 API** appear in responses or are accepted in writes; any other key is refused
 by name (`"is not accepted by the API"`). Keys you leave out are left empty
@@ -395,6 +397,59 @@ in the business's timezone; GSTR-1 reports the note in that date's month. A
 request is refused with `422` if the business's series would produce a number
 over 16 characters.
 
+### `GET /api/v1/quotations` · `GET /api/v1/quotations/:id`
+
+```json
+{
+  "id": 9, "number": "QT-0009", "status": "Sent",
+  "quotation_date": "2026-11-20", "valid_until": "2026-12-20",
+  "place_of_supply": "Maharashtra (27)", "currency": "INR",
+  "tax_regime": "gst", "reverse_charge": false, "tax_breakdown": [],
+  "client": {"id": 7, "name": "Northwind Traders", "gstin": "27…", "tax_number": null,
+             "state": "Maharashtra (27)"},
+  "amounts": {"taxable_value": 10000, "cgst": 900, "sgst": 900, "igst": 0, "cess": 0,
+              "vat": 0, "round_off": 0, "grand_total": 11800},
+  "invoice_id": null, "remarks": null, "terms": null, "custom_fields": {},
+  "public_url": "https://…/q/acme/…",
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+`status` is Draft, Sent, Accepted or Declined, or **Expired** for a Draft or
+Sent quotation whose `valid_until` has passed in the business's timezone.
+`?status=` filters by any of the five; the list pages like invoices. `invoice_id`
+is the invoice the quotation was converted into. A single quotation also has
+`items`, shaped like invoice lines. `public_url` appears only for a key with
+`quotations:write`.
+
+### `POST /api/v1/quotations`
+
+The body is the invoice body's client, lines and tax fields, with
+`quotation_date` and `valid_until` in place of the invoice dates:
+`client_id` (required), `quotation_date` (default today), `valid_until`
+(default the business's **Quotations Valid For** setting after the quotation
+date), `place_of_supply`, `remarks`, `terms`, `items` and `custom_fields`.
+Invoice-only fields such as `due_date` are refused by name. The quotation is
+created as a Draft with the next `QT-` number. Answers `201`.
+
+### `POST /api/v1/quotations/:id/send`
+
+```json
+{"to": "buyer@example.com"}
+```
+
+Emails the quotation, PDF attached, with the client's link. `to` is one email
+address and defaults to the client email on the quotation. Answers `202` once
+the email is queued; a Draft becomes Sent. An expired quotation is refused with
+`409` `expired`.
+
+### `POST /api/v1/quotations/:id/accept` · `POST /api/v1/quotations/:id/decline`
+
+Empty body. A Draft or Sent quotation becomes Accepted or Declined. Any other
+status, or accepting an expired quotation, is refused with `409`
+`invalid_transition`. Converting into an invoice, editing and deleting are done
+in the application.
+
 ## OpenAPI
 
 [`openapi.json`](openapi.json) describes every endpoint, scope and response
@@ -403,7 +458,7 @@ serializers.
 
 ## The Bin
 
-Records in the Bin — and e-way bills whose invoice is in the Bin — are absent
+Records in the Bin (invoices, quotations, clients) — and e-way bills whose invoice is in the Bin — are absent
 from lists and return `404` by id, exactly as if they did not exist. Restoring
 one from the Bin makes it visible again.
 

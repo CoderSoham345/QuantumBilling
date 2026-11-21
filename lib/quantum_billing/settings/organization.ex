@@ -66,6 +66,8 @@ defmodule QuantumBilling.Settings.Organization do
     # Quotations run their own series too; they are not tax documents.
     field :quotation_prefix, :string, default: "QT"
     field :quotation_next_number, :integer, default: 1
+    # How long a new quotation stays valid, in days.
+    field :quotation_validity_days, :integer, default: 30
 
     field :ewb_transport_mode, :string, default: "Road"
     field :ewb_transporter_id, :string
@@ -145,7 +147,7 @@ defmodule QuantumBilling.Settings.Organization do
   @invoice ~w(invoice_prefix invoice_next_number invoice_number_padding
               invoice_due_days invoice_terms credit_note_prefix credit_note_next_number
               debit_note_prefix debit_note_next_number quotation_prefix
-              quotation_next_number)a
+              quotation_next_number quotation_validity_days)a
 
   # Each numbering series as {prefix field, next number field}.
   @series [
@@ -215,6 +217,15 @@ defmodule QuantumBilling.Settings.Organization do
     |> validate_length(:bank_branch, max: 120)
     |> validate_number(:invoice_number_padding, greater_than_or_equal_to: 0, less_than: 12)
     |> validate_number(:invoice_due_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
+    |> validate_required([:quotation_validity_days])
+    |> validate_number(:quotation_validity_days,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: 365
+    )
+    |> check_constraint(:quotation_validity_days,
+      name: :organization_settings_quotation_validity_valid,
+      message: "must be between 1 and 365 days"
+    )
     |> validate_series()
   end
 

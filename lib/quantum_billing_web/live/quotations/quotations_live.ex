@@ -95,7 +95,7 @@ defmodule QuantumBillingWeb.QuotationsLive do
          {:ok, deleted} <- Quotations.delete_quotation(socket.assigns.current_scope, quotation) do
       {:noreply,
        socket
-       |> put_flash(:info, "Quotation #{deleted.number} deleted.")
+       |> put_flash(:info, "Quotation #{deleted.number} moved to the Bin.")
        |> load_page()}
     else
       nil ->
@@ -286,7 +286,7 @@ defmodule QuantumBillingWeb.QuotationsLive do
                       id={"quotation-delete-#{quotation.id}"}
                       phx-click="delete"
                       phx-value-id={quotation.id}
-                      data-confirm={"Delete #{quotation.number}? This cannot be undone."}
+                      data-confirm={"Move #{quotation.number} to the Bin? It can be restored from there."}
                       class={row_delete_class()}
                       aria-label="Delete quotation"
                       title="Delete"

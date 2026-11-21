@@ -339,6 +339,8 @@ defmodule QuantumBillingWeb.SettingsLive.DataModel do
   defp object_icon("client"), do: "hero-user-group"
   defp object_icon("invoice"), do: "hero-document-text"
   defp object_icon("invoice_item"), do: "hero-list-bullet"
+  defp object_icon("quotation"), do: "hero-clipboard-document-list"
+  defp object_icon("quotation_item"), do: "hero-list-bullet"
   defp object_icon("credit_note"), do: "hero-receipt-refund"
   defp object_icon("e_way_bill"), do: "hero-truck"
   defp object_icon("recurring_profile"), do: "hero-arrow-path"
@@ -844,11 +846,16 @@ defmodule QuantumBillingWeb.SettingsLive.DataModel do
               <.toggle
                 :if={FieldDefinition.printable_object?(@definition.object)}
                 field={@form[:show_on_invoice]}
-                label="Printable on invoices"
+                label={
+                  if(@definition.object in ["quotation", "quotation_item"],
+                    do: "Printable on quotations",
+                    else: "Printable on invoices"
+                  )
+                }
                 hint={
-                  if(@definition.object == "invoice_item",
+                  if(@definition.object in ["invoice_item", "quotation_item"],
                     do: "Printed as an item-table column when a line has a value.",
-                    else: "Available to the invoice designer's custom-fields block."
+                    else: "Available to the designer's custom-fields block."
                   )
                 }
               />

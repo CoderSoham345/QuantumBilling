@@ -1411,6 +1411,15 @@ defmodule QuantumBillingWeb.SettingsLive do
             required
             min="1"
           />
+          <.field
+            field={f[:quotation_validity_days]}
+            label="Quotations Valid For (days)"
+            type="number"
+            required
+            min="1"
+            max="365"
+            hint="Sets the Valid Until date on a new quotation. You can still change it on each one."
+          />
         </div>
       </div>
 

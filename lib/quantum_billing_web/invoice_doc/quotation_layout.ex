@@ -6,15 +6,15 @@ defmodule QuantumBillingWeb.InvoiceDoc.QuotationLayout do
     * the title reads "Quotation" (a heading is added when the design has none)
     * the dates read "Quotation Date" and "Valid Until"
     * payment terms and status lines are dropped
-    * the payment block (UPI QR, bank) and custom fields are dropped: a
-      quotation is not payable, and invoice custom fields don't apply
+    * the payment block (UPI QR, bank) is dropped: a quotation is not payable
+    * the custom-fields block stays, and prints the quotation's own fields
   """
 
   alias QuantumBillingWeb.InvoiceDoc.Block
   alias QuantumBillingWeb.InvoiceDoc.Catalog
   alias QuantumBillingWeb.InvoiceDoc.Document
 
-  @dropped_blocks [:payment, :custom_fields]
+  @dropped_blocks [:payment]
   @dropped_meta ~w(payment_terms status)
 
   @doc "The quotation version of `document`."

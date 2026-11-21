@@ -10,11 +10,16 @@ defmodule QuantumBilling.Quotations.Quotation do
   An Accepted quotation converts into one invoice, linked by
   `invoices.quotation_id` (unique). A quotation with a linked invoice is
   converted and stays Accepted.
+
+  Deleting sets `deleted_at` (the Bin). `public_token` is the bearer secret
+  in the client's link, `/q/:slug/:token`.
   """
   use Ecto.Schema
 
   import Ecto.Changeset
+  import Ecto.Query, only: [from: 2]
 
+  alias QuantumBilling.CustomFields
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Quotations.QuotationItem
   alias QuantumBilling.Tax
@@ -70,6 +75,10 @@ defmodule QuantumBilling.Quotations.Quotation do
     field :remarks, :string
     field :terms, :string
     field :layout_xml, :string
+    field :custom_fields, :map, default: %{}
+    field :public_token, :string
+    # Set only by bin_changeset/1 and restore_changeset/1.
+    field :deleted_at, :utc_datetime
 
     belongs_to :template, QuantumBilling.Templates.InvoiceTemplate
     belongs_to :client, QuantumBilling.Clients.Client
@@ -106,8 +115,9 @@ defmodule QuantumBilling.Quotations.Quotation do
     |> cast(attrs, @castable)
     |> change(Map.take(trusted, @trusted))
     |> default_currency(attrs, trusted)
+    |> ensure_public_token()
     |> validate_inclusion(:tax_regime, Tax.regime_codes())
-    |> cast_items()
+    |> cast_items(attrs)
     |> validate_required([:quotation_date, :valid_until, :client_name])
     |> validate_length(:client_name, max: 255)
     |> Invoice.validate_place_of_supply()
@@ -116,6 +126,7 @@ defmodule QuantumBilling.Quotations.Quotation do
       message: "is not a supported currency"
     )
     |> validate_valid_until()
+    |> CustomFields.cast("quotation", attrs)
     |> Invoice.validate_has_items()
     |> Invoice.recalculate()
     |> unique_constraint(:number,
@@ -125,6 +136,40 @@ defmodule QuantumBilling.Quotations.Quotation do
       name: :quotations_valid_until_after_date,
       message: "cannot be before the quotation date"
     )
+  end
+
+  @doc "Narrows `query` to quotations not in the Bin."
+  def kept(query \\ __MODULE__) do
+    from q in query, where: is_nil(q.deleted_at)
+  end
+
+  @doc "Narrows `query` to quotations in the Bin."
+  def binned(query \\ __MODULE__) do
+    from q in query, where: not is_nil(q.deleted_at)
+  end
+
+  @doc "Moves the quotation to the Bin."
+  def bin_changeset(quotation), do: change(quotation, deleted_at: DateTime.utc_now(:second))
+
+  @doc "Takes the quotation out of the Bin."
+  def restore_changeset(quotation), do: change(quotation, deleted_at: nil)
+
+  @doc "A fresh 192-bit random token for the public link. It is a bearer credential."
+  def generate_public_token do
+    "qt_" <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+  end
+
+  @doc "Gives a quotation saved before links existed its token."
+  def token_changeset(quotation), do: change(quotation, public_token: generate_public_token())
+
+  defp ensure_public_token(changeset) do
+    case get_field(changeset, :public_token) do
+      blank when blank in [nil, ""] ->
+        put_change(changeset, :public_token, generate_public_token())
+
+      _present ->
+        changeset
+    end
   end
 
   @doc "Moves the stored status. Callers check the transition is allowed."
@@ -162,18 +207,39 @@ defmodule QuantumBilling.Quotations.Quotation do
 
   defp default_currency(changeset, _attrs, _trusted), do: changeset
 
-  defp cast_items(changeset) do
+  defp cast_items(changeset, attrs) do
     tax =
       if get_field(changeset, :tax_regime) == "vat",
         do: {:vat, TaxRates.rates_by_id()},
         else: :gst
 
+    # Loaded once for every line, and only when a line sends values.
+    definitions =
+      if attrs |> item_attrs() |> Enum.any?(&custom_fields_sent?/1),
+        do: CustomFields.active_definitions("quotation_item"),
+        else: []
+
     cast_assoc(changeset, :items,
-      with: &QuotationItem.changeset(&1, &2, tax),
+      with: &QuotationItem.changeset(&1, &2, tax, definitions),
       sort_param: :items_sort,
       drop_param: :items_drop
     )
   end
+
+  defp item_attrs(attrs) when is_map(attrs) do
+    case Map.get(attrs, "items", Map.get(attrs, :items)) do
+      items when is_map(items) -> Map.values(items)
+      items when is_list(items) -> items
+      _none -> []
+    end
+  end
+
+  defp item_attrs(_attrs), do: []
+
+  defp custom_fields_sent?(item) when is_map(item),
+    do: Map.has_key?(item, "custom_fields") or Map.has_key?(item, :custom_fields)
+
+  defp custom_fields_sent?(_item), do: false
 
   defp validate_valid_until(changeset) do
     date = get_field(changeset, :quotation_date)

@@ -8,6 +8,7 @@ defmodule QuantumBillingWeb.QuotationPdfController do
     * `show/2` - the print page (the browser can save it as PDF)
     * `download/2` - a server-side PDF, or a redirect to the print page when
       no headless browser is installed
+    * `public/2` - the client's PDF from the public link, with no session
   """
   use QuantumBillingWeb, :controller
 
@@ -70,6 +71,52 @@ defmodule QuantumBillingWeb.QuotationPdfController do
             conn
             |> put_flash(:error, "That PDF could not be produced (#{inspect(reason)}).")
             |> redirect(to: ~p"/quotations/#{quotation}/pdf")
+        end
+    end
+  end
+
+  def public(conn, %{"token" => token} = params) do
+    # No session business for a visitor: the link names it. The endpoint
+    # clears it again before the next request on this connection.
+    business =
+      QuantumBilling.Repo.put_business(QuantumBilling.Businesses.from_link(params["slug"]))
+
+    case business && Quotations.get_quotation_by_token(token) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> put_view(html: QuantumBillingWeb.ErrorHTML)
+        |> put_root_layout(false)
+        |> put_layout(false)
+        |> render(:"404")
+
+      quotation ->
+        document = Quotations.as_document(quotation)
+
+        case InvoicePdfGenerator.generate_pdf(document, adapt: &QuotationLayout.adapt/1) do
+          {:ok, pdf} ->
+            send_download(conn, {:binary, pdf},
+              filename: "Quotation-#{quotation.number}.pdf",
+              content_type: "application/pdf"
+            )
+
+          {:error, _reason} ->
+            # No renderer: send the print page for the browser to save as PDF.
+            {doc, accent, logo} = Templates.document_for(document)
+            doc = QuotationLayout.adapt(doc)
+
+            conn
+            |> put_view(html: QuantumBillingWeb.InvoicePdfHTML)
+            |> put_root_layout(false)
+            |> put_layout(false)
+            |> render(:show,
+              invoice: document,
+              doc: doc,
+              accent: accent,
+              # A visitor has no session, so /uploads refuses them.
+              logo: InvoicePdfGenerator.inline_logo(logo),
+              extras: Extras.build(document, doc, inline: true)
+            )
         end
     end
   end

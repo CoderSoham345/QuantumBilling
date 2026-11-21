@@ -5,9 +5,16 @@ defmodule QuantumBillingWeb.QuotationShowLive do
 
   Draft → Sent → Accepted or Declined. An Accepted quotation converts into
   one invoice through the new-invoice form (`/invoices/new?quotation=ID`).
+
+  An open quotation can be emailed to the client, with a link where they can
+  accept or decline it themselves. Deleting moves it to the Bin.
   """
   use QuantumBillingWeb, :live_view
 
+  import QuantumBillingWeb.CustomFieldComponents, only: [any_values?: 2, custom_details: 1]
+
+  alias QuantumBilling.CustomFields
+  alias QuantumBilling.QuotationNotifier
   alias QuantumBilling.Quotations
   alias QuantumBilling.Quotations.Quotation
   alias QuantumBilling.Templates
@@ -28,7 +35,12 @@ defmodule QuantumBillingWeb.QuotationShowLive do
         {:ok,
          socket
          |> assign(:active_nav, :quotations)
-         |> assign_quotation(quotation)}
+         |> assign(
+           :custom_definitions,
+           CustomFields.list_definitions("quotation", archived: :include)
+         )
+         |> assign_quotation(quotation)
+         |> assign_email_form(quotation.client_email)}
     end
   end
 
@@ -48,7 +60,11 @@ defmodule QuantumBillingWeb.QuotationShowLive do
     |> assign(:accent, accent)
     |> assign(:logo, InvoicePdfGenerator.inline_logo(logo))
     |> assign(:extras, Extras.build(document, doc, inline: true))
+    |> assign(:public_url, QuotationNotifier.public_url(quotation))
   end
+
+  defp assign_email_form(socket, to),
+    do: assign(socket, :email_form, to_form(%{"to" => to || ""}, as: :email))
 
   def handle_event("mark_sent", _params, socket),
     do: transition(socket, &Quotations.mark_sent/2, "marked as sent")
@@ -59,6 +75,47 @@ defmodule QuantumBillingWeb.QuotationShowLive do
   def handle_event("decline", _params, socket),
     do: transition(socket, &Quotations.decline/2, "declined")
 
+  def handle_event("send_email", %{"email" => %{"to" => to}}, socket) do
+    %{quotation: quotation, current_scope: scope} = socket.assigns
+
+    case Quotations.send_email(scope, quotation, to) do
+      {:ok, updated, delivery} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Quotation #{updated.number} queued for delivery to #{delivery.to_email}."
+         )
+         |> assign_quotation(updated)
+         |> assign_email_form(delivery.to_email)}
+
+      {:error, :invalid_recipient} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Enter one valid email address to send the quotation to.")
+         |> assign_email_form(to)}
+
+      {:error, :expired} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "This quotation has expired. Extend Valid Until before sending it."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not queue the email: #{inspect(reason)}")}
+    end
+  end
+
+  # Quotations saved before public links existed get one on request.
+  def handle_event("create_link", _params, socket) do
+    case Quotations.ensure_public_token(socket.assigns.quotation) do
+      {:ok, quotation} -> {:noreply, assign_quotation(socket, quotation)}
+      {:error, _changeset} -> {:noreply, put_flash(socket, :error, "The link could not be made.")}
+    end
+  end
+
   def handle_event("delete", _params, socket) do
     quotation = socket.assigns.quotation
 
@@ -66,7 +123,7 @@ defmodule QuantumBillingWeb.QuotationShowLive do
       {:ok, _deleted} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Quotation #{quotation.number} deleted.")
+         |> put_flash(:info, "Quotation #{quotation.number} moved to the Bin.")
          |> push_navigate(to: ~p"/quotations")}
 
       {:error, :converted} ->
@@ -236,6 +293,126 @@ defmodule QuantumBillingWeb.QuotationShowLive do
         </div>
       </.card>
 
+      <.card id="quotation-share" padding="px-4 py-3" class="mb-3">
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div class="min-w-0">
+            <h2 class="mb-1 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+              <.icon name="hero-globe-alt" class="size-4 text-base-content/50" /> Client link
+            </h2>
+            <p class="mb-2 text-xs text-base-content/60">
+              The client can view, download and {if @status in ["Draft", "Sent"],
+                do: "accept or decline",
+                else: "look back at"} the quotation here. No account needed.
+            </p>
+
+            <div :if={@public_url} class="flex items-center gap-2">
+              <code
+                id="quotation-public-url"
+                class="block min-w-0 flex-1 truncate rounded-field border border-base-300 bg-base-200/60 px-3 py-2 font-mono text-xs"
+                title={@public_url}
+              >
+                {@public_url}
+              </code>
+              <button
+                id="copy-quotation-link"
+                type="button"
+                phx-hook=".CopyQuotationLink"
+                data-target="quotation-public-url"
+                class={secondary_button_class()}
+              >
+                <.icon name="hero-clipboard-document" class="size-4" />
+                <span data-label>Copy</span>
+              </button>
+              <.link
+                id="quotation-public-link"
+                href={@public_url}
+                target="_blank"
+                class={secondary_button_class()}
+                aria-label="Open the client's page in a new tab"
+              >
+                <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+              </.link>
+            </div>
+
+            <button
+              :if={is_nil(@public_url)}
+              id="create-public-link"
+              type="button"
+              phx-click="create_link"
+              phx-disable-with="Making link..."
+              class={secondary_button_class()}
+            >
+              <.icon name="hero-link" class="size-4" /> Make a client link
+            </button>
+          </div>
+
+          <div :if={@status in ["Draft", "Sent"]} class="min-w-0">
+            <h2 class="mb-1 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+              <.icon name="hero-paper-airplane" class="size-4 text-base-content/50" /> Email to client
+            </h2>
+            <p class="mb-2 text-xs text-base-content/60">
+              Sends the PDF and the client link.{if @status == "Draft",
+                do: " The quotation is then marked Sent."}
+            </p>
+            <.form
+              for={@email_form}
+              id="quotation-email-form"
+              phx-submit="send_email"
+              class="flex items-start gap-2"
+            >
+              <div class="min-w-0 flex-1">
+                <.input
+                  field={@email_form[:to]}
+                  type="email"
+                  placeholder="client@example.com"
+                  aria-label="Recipient email"
+                  required
+                />
+              </div>
+              <button
+                id="send-quotation-email"
+                type="submit"
+                phx-disable-with="Queueing..."
+                class={action_button_class()}
+              >
+                <.icon name="hero-paper-airplane" class="size-4" /> Send
+              </button>
+            </.form>
+          </div>
+        </div>
+
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyQuotationLink">
+          export default {
+            mounted() {
+              this.el.addEventListener("click", () => {
+                const source = document.getElementById(this.el.dataset.target)
+                const label = this.el.querySelector("[data-label]")
+                if (!source || !navigator.clipboard) return
+                navigator.clipboard.writeText(source.textContent.trim()).then(() => {
+                  label.textContent = "Copied"
+                  setTimeout(() => (label.textContent = "Copy"), 2000)
+                })
+              })
+            }
+          }
+        </script>
+      </.card>
+
+      <.card
+        :if={any_values?(@custom_definitions, @quotation.custom_fields)}
+        id="quotation-custom-fields"
+        class="mb-3"
+      >
+        <h2 class="mb-3 text-sm font-semibold tracking-tight">Details</h2>
+        <.custom_details
+          id="quotation-custom-values"
+          definitions={@custom_definitions}
+          values={@quotation.custom_fields}
+          currency={@quotation.currency}
+          class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4"
+        />
+      </.card>
+
       <div id="quotation-sheet-desk" class="rounded-box bg-base-200 p-3 sm:p-8">
         <div
           id="quotation-document"
@@ -257,10 +434,10 @@ defmodule QuantumBillingWeb.QuotationShowLive do
           id="delete-quotation"
           type="button"
           phx-click="delete"
-          data-confirm={"Delete #{@quotation.number}? This cannot be undone."}
+          data-confirm={"Move #{@quotation.number} to the Bin? It can be restored from there."}
           class="inline-flex items-center gap-1.5 rounded-field px-2.5 py-1.5 text-xs font-medium text-base-content/50 transition-colors hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950 dark:hover:text-rose-300"
         >
-          <.icon name="hero-trash" class="size-3.5" /> Delete quotation
+          <.icon name="hero-trash" class="size-3.5" /> Move to Bin
         </button>
       </div>
     </Layouts.app>

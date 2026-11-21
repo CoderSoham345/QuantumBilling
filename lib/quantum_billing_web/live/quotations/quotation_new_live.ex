@@ -10,9 +10,11 @@ defmodule QuantumBillingWeb.QuotationNewLive do
   use QuantumBillingWeb, :live_view
 
   import QuantumBillingWeb.DocumentFormComponents
+  import QuantumBillingWeb.CustomFieldComponents, only: [custom_fields_section: 1]
   import QuantumBillingWeb.SettingsComponents, only: [toggle: 1]
 
   alias QuantumBilling.Clients
+  alias QuantumBilling.CustomFields
   alias QuantumBilling.EWayBills.EWayBillForm
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Quotations
@@ -31,6 +33,8 @@ defmodule QuantumBillingWeb.QuotationNewLive do
       |> assign(:active_nav, :quotations)
       |> assign(:organization, organization)
       |> assign(:template_options, template_options())
+      |> assign(:custom_definitions, CustomFields.active_definitions("quotation"))
+      |> assign(:item_definitions, CustomFields.active_definitions("quotation_item"))
       |> DocumentForm.init_client_picker()
 
     case params do
@@ -48,7 +52,7 @@ defmodule QuantumBillingWeb.QuotationNewLive do
 
     params = %{
       "quotation_date" => Date.to_iso8601(today),
-      "valid_until" => Date.to_iso8601(Date.add(today, Quotations.default_validity_days())),
+      "valid_until" => Date.to_iso8601(Quotations.default_valid_until(organization, today)),
       "place_of_supply" => organization.state,
       "terms" => organization.invoice_terms,
       "items" => %{"0" => DocumentForm.blank_item(0)}
@@ -277,6 +281,15 @@ defmodule QuantumBillingWeb.QuotationNewLive do
                 hint="The customer accounts for the VAT, so none is charged."
               />
             </div>
+
+            <.custom_fields_section
+              id="quotation-custom-fields"
+              form={f}
+              definitions={@custom_definitions}
+              object="quotation"
+              current_scope={@current_scope}
+              class="mt-4 border-t border-base-300 pt-4"
+            />
           </.card>
 
           <.client_section
@@ -294,6 +307,7 @@ defmodule QuantumBillingWeb.QuotationNewLive do
             tax_rates={@tax_rates}
             currency={@currency}
             summary={@summary}
+            item_definitions={@item_definitions}
           />
 
           <.card padding="p-4">

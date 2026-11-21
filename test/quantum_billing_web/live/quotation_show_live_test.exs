@@ -2,10 +2,12 @@ defmodule QuantumBillingWeb.QuotationShowLiveTest do
   use QuantumBillingWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import QuantumBilling.CustomFieldsFixtures, only: [field_fixture: 2]
   import QuantumBilling.QuotationsFixtures
 
   alias QuantumBilling.Invoices
   alias QuantumBilling.Quotations
+  alias QuantumBilling.Repo
   alias QuantumBilling.Settings
 
   setup :register_and_log_in_user
@@ -94,6 +96,80 @@ defmodule QuantumBillingWeb.QuotationShowLiveTest do
                view |> element("#delete-quotation") |> render_click()
 
       assert Quotations.get_quotation(quotation.id) == nil
+      assert Quotations.get_deleted_quotation(quotation.id)
+    end
+  end
+
+  describe "sharing" do
+    test "shows a new quotation's client link", %{conn: conn, scope: scope} do
+      quotation = quotation_fixture(scope)
+      {:ok, view, _html} = live(conn, ~p"/quotations/#{quotation}")
+
+      assert has_element?(view, "#quotation-public-url", quotation.public_token)
+      assert has_element?(view, "#quotation-public-link")
+      refute has_element?(view, "#create-public-link")
+    end
+
+    test "makes a link for a quotation saved before links existed", %{conn: conn, scope: scope} do
+      quotation =
+        scope |> quotation_fixture() |> Ecto.Changeset.change(public_token: nil) |> Repo.update!()
+
+      {:ok, view, _html} = live(conn, ~p"/quotations/#{quotation}")
+
+      refute has_element?(view, "#quotation-public-url")
+      view |> element("#create-public-link") |> render_click()
+
+      token = Quotations.get_quotation(quotation.id).public_token
+      assert has_element?(view, "#quotation-public-url", token)
+      refute has_element?(view, "#create-public-link")
+    end
+
+    test "emails the quotation and marks a draft Sent", %{conn: conn, scope: scope} do
+      quotation = quotation_fixture(scope)
+      {:ok, view, _html} = live(conn, ~p"/quotations/#{quotation}")
+
+      view
+      |> form("#quotation-email-form", %{"email" => %{"to" => "buyer@acme.test"}})
+      |> render_submit()
+
+      assert has_element?(view, "#flash-info", "buyer@acme.test")
+      assert status(view) =~ ~s(data-status="Sent")
+      assert has_element?(view, "#quotation-public-url")
+
+      assert_received {:email,
+                       %Swoosh.Email{subject: "Quotation " <> _, to: [{_, "buyer@acme.test"}]}}
+    end
+
+    test "refuses a bad address and leaves the draft alone", %{conn: conn, scope: scope} do
+      quotation = quotation_fixture(scope)
+      {:ok, view, _html} = live(conn, ~p"/quotations/#{quotation}")
+
+      view
+      |> form("#quotation-email-form", %{"email" => %{"to" => "not-an-address"}})
+      |> render_submit()
+
+      assert has_element?(view, "#flash-error", "valid email")
+      assert status(view) =~ ~s(data-status="Draft")
+    end
+  end
+
+  describe "custom fields" do
+    test "shows the values a quotation was saved with", %{conn: conn, scope: scope} do
+      field_fixture("quotation", %{"label" => "Project code", "type" => "text"})
+      quotation = quotation_fixture(scope, %{"custom_fields" => %{"project_code" => "PRJ-7"}})
+
+      {:ok, view, _html} = live(conn, ~p"/quotations/#{quotation}")
+
+      assert has_element?(view, "#quotation-custom-values", "PRJ-7")
+    end
+
+    test "has no details card without values", %{conn: conn, scope: scope} do
+      field_fixture("quotation", %{"label" => "Project code", "type" => "text"})
+      quotation = quotation_fixture(scope)
+
+      {:ok, view, _html} = live(conn, ~p"/quotations/#{quotation}")
+
+      refute has_element?(view, "#quotation-custom-fields")
     end
   end
 

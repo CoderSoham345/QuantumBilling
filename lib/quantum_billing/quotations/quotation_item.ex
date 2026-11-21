@@ -6,6 +6,7 @@ defmodule QuantumBilling.Quotations.QuotationItem do
   """
   use Ecto.Schema
 
+  alias QuantumBilling.CustomFields
   alias QuantumBilling.Invoices.InvoiceItem
   alias QuantumBilling.Money.Paise
 
@@ -26,7 +27,7 @@ defmodule QuantumBilling.Quotations.QuotationItem do
 
     belongs_to :quotation, QuantumBilling.Quotations.Quotation
 
-    # Quotations carry no custom field values yet; the column keeps parity with invoices.
+    # Values of the "quotation_item" custom fields.
     field :custom_fields, :map, default: %{}
 
     timestamps(type: :utc_datetime)
@@ -34,14 +35,11 @@ defmodule QuantumBilling.Quotations.QuotationItem do
 
   @doc """
   The invoice item changeset, applied to a quotation line. `tax` is `:gst` or
-  `{:vat, rates_by_id}`. Custom field values are not accepted on quotations.
+  `{:vat, rates_by_id}`. `definitions` are the "quotation_item" custom fields,
+  loaded once per quotation by the caller (`nil` loads them here).
   """
-  def changeset(item, attrs, tax \\ :gst) do
-    InvoiceItem.changeset(item, drop_custom_fields(attrs), [], tax)
+  def changeset(item, attrs, tax \\ :gst, definitions \\ nil) do
+    definitions = definitions || CustomFields.active_definitions("quotation_item")
+    InvoiceItem.changeset(item, attrs, definitions, tax)
   end
-
-  defp drop_custom_fields(attrs) when is_map(attrs),
-    do: Map.drop(attrs, ["custom_fields", :custom_fields])
-
-  defp drop_custom_fields(attrs), do: attrs
 end

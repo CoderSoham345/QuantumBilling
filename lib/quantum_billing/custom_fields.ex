@@ -22,6 +22,8 @@ defmodule QuantumBilling.CustomFields do
     {"client", "Clients", "clients"},
     {"invoice", "Invoices", "invoices"},
     {"invoice_item", "Invoice items", "invoice_items"},
+    {"quotation", "Quotations", "quotations"},
+    {"quotation_item", "Quotation items", "quotation_items"},
     {"credit_note", "Credit notes", "credit_notes"},
     {"e_way_bill", "E-way bills", "e_way_bills"},
     {"recurring_profile", "Recurring profiles", "recurring_profiles"}
@@ -40,6 +42,8 @@ defmodule QuantumBilling.CustomFields do
     "client" => QuantumBilling.Clients.Client,
     "invoice" => QuantumBilling.Invoices.Invoice,
     "invoice_item" => QuantumBilling.Invoices.InvoiceItem,
+    "quotation" => QuantumBilling.Quotations.Quotation,
+    "quotation_item" => QuantumBilling.Quotations.QuotationItem,
     "credit_note" => QuantumBilling.CreditNotes.CreditNote,
     "e_way_bill" => QuantumBilling.EWayBills.EWayBill,
     "recurring_profile" => QuantumBilling.Recurring.RecurringProfile

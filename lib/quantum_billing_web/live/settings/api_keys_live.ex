@@ -25,7 +25,10 @@ defmodule QuantumBillingWeb.SettingsLive.ApiKeys do
     "clients:write" => "Create clients",
     "e_way_bills:read" => "List and fetch e-way bills",
     "credit_notes:read" => "List and fetch credit and debit notes",
-    "credit_notes:write" => "Raise credit and debit notes against invoices"
+    "credit_notes:write" => "Raise credit and debit notes against invoices",
+    "quotations:read" => "List and fetch quotations",
+    "quotations:write" =>
+      "Create, email, accept and decline quotations; see each one's client link"
   }
 
   def mount(_params, _session, socket) do

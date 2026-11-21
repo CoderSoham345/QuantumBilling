@@ -237,6 +237,7 @@ Application-managed business configuration. A unique index on `singleton` is use
 | `credit_note_next_number`, `debit_note_next_number` | `integer` | Required; `1` |
 | `quotation_prefix` | `varchar(255)` | Required; `QT`. Quotations use the invoice padding too |
 | `quotation_next_number` | `integer` | Required; `1` |
+| `quotation_validity_days` | `integer` | Required; `30`. 1 to 365 (`organization_settings_quotation_validity_valid`). The new-quotation form's default Valid Until |
 | `invoice_due_days` | `integer` | Required; `30` |
 | `invoice_terms` | `text` | Nullable |
 | `ewb_transport_mode` | `varchar(255)` | Required; `Road` |
@@ -413,18 +414,23 @@ Estimates sent before invoicing. A quotation carries the same client and company
 | `template_id` | `bigint` FK → same-schema `invoice_templates.id` | Nullable; delete sets `NULL` |
 | `layout_xml` | `text` | Nullable; layout snapshot, as on `invoices` |
 | `user_id` | `bigint` FK → `public.users.id` | Nullable; delete sets `NULL`. Who created it |
+| `custom_fields` | `jsonb` | Required; `{}`. Values of the business's `quotation` fields |
+| `public_token` | `varchar(255)` | Nullable; unique. The client link's bearer secret, set on insert. Rows from before the column get one when a link is first made |
+| `deleted_at` | `timestamp` | Nullable. Set when the quotation is in the Bin |
 
-`quotations_valid_until_after_date` requires `valid_until >= quotation_date`. Indexes cover unique `number`, `status`, `valid_until`, `quotation_date` and `client_id`.
+`quotations_valid_until_after_date` requires `valid_until >= quotation_date`. Indexes cover unique `number`, unique `public_token`, `status`, `valid_until`, `quotation_date`, `client_id` and `deleted_at`.
 
 **Expired** is not a stored status. A Draft or Sent row whose `valid_until` is before the business's local date reads as Expired, so a list filters it with `status IN ('Draft','Sent') AND valid_until < today`. No job updates the rows. Status changes lock the row `FOR UPDATE` and check the stored status before writing. Number allocation locks the organization row, as invoice numbering does, and advances `quotation_next_number` in the same transaction.
 
 A quotation is converted when an invoice's `quotation_id` points to it. Conversion locks the quotation row, requires Accepted with no invoice yet, and inserts the invoice in the same transaction; the unique index on `invoices.quotation_id` is the backstop. A converted quotation stays Accepted.
 
-Source: [quotation schema](../lib/quantum_billing/quotations/quotation.ex), [quotation context](../lib/quantum_billing/quotations.ex), [migration](../priv/repo/tenant_migrations/20261120110049_create_quotations.exs).
+Lists, lookups, the API and the client link read only rows with `deleted_at IS NULL`; the Bin reads the rest. A converted quotation is never binned.
+
+Source: [quotation schema](../lib/quantum_billing/quotations/quotation.ex), [quotation context](../lib/quantum_billing/quotations.ex), [migration](../priv/repo/tenant_migrations/20261120110049_create_quotations.exs), [extras migration](../priv/repo/tenant_migrations/20261120112937_add_quotation_extras.exs).
 
 ### `quotation_items`
 
-The same columns as [`invoice_items`](#invoice_items), with `quotation_id` (`bigint` FK → same-schema `quotations.id`, required, delete cascades) in place of `invoice_id`, and the same `quantity > 0`, `rate >= 0` and `amount >= 0` checks. Lines are validated and totalled by the invoice item code. `custom_fields` is present but not used yet.
+The same columns as [`invoice_items`](#invoice_items), with `quotation_id` (`bigint` FK → same-schema `quotations.id`, required, delete cascades) in place of `invoice_id`, and the same `quantity > 0`, `rate >= 0` and `amount >= 0` checks. Lines are validated and totalled by the invoice item code. `custom_fields` holds the values of the business's `quotation_item` fields.
 
 ### `credit_notes`
 
@@ -783,7 +789,7 @@ Unprefixed operational entities in the diagram are in one selected `biz_N`. Edge
 | Delete `public.businesses` | Cascades memberships/invitations. It does **not** automatically drop the PostgreSQL schema or its books. |
 | Delete a client | Nulls invoice, quotation and recurring-profile client references; is restricted when credit notes still reference it. |
 | Delete an invoice | Cascades line items, credit notes, and e-way bills; nulls email-delivery invoice references. |
-| Delete a quotation | Cascades its lines; nulls the converted invoice's `quotation_id`. The application refuses to delete a converted quotation. |
+| Delete a quotation | Sets `deleted_at` (the Bin). Purging from the Bin deletes the row and cascades its lines. The application refuses to bin a converted quotation, so `invoices.quotation_id` never points at a purged one. |
 | Delete an e-way bill | Cascades its Part-B updates. |
 | Delete an invoice template | Nulls invoice and quotation template references. |
 | Delete a tax rate | Nulls `invoice_items.tax_rate_id`; the line keeps its snapshot of the rate. Rates are archived in normal use. |
@@ -892,9 +898,9 @@ Sources: [schema-transfer migration](../priv/repo/migrations/20261015115410_move
 
 ## 9. Backup boundaries
 
-The application's JSON export is a business-data export, not a full PostgreSQL backup. Format version `3.2` stores money in minor units and can upgrade the supported older `2.0`, `2.1`, `3.0` and `3.1` files on restore. Files older than `3.2` were written before VAT, so restore treats every record in them as GST: `tax_regime` `gst`, `vat_amount` 0, an empty `tax_breakdown`, no reverse charge, rounding on, and client `country` `IN`. Files without custom fields restore with `custom_fields` `{}`.
+The application's JSON export is a business-data export, not a full PostgreSQL backup. Format version `3.3` stores money in minor units and can upgrade the supported older `2.0`, `2.1`, `3.0`, `3.1` and `3.2` files on restore; a file older than `3.3` has no quotations and restores with none. Files older than `3.2` were written before VAT, so restore treats every record in them as GST: `tax_regime` `gst`, `vat_amount` 0, an empty `tax_breakdown`, no reverse charge, rounding on, and client `country` `IN`. Files without custom fields restore with `custom_fields` `{}`.
 
-The export includes selected organization settings (with the tax regime, VAT number and country, inclusive pricing and rounding) plus, in restore order, field definitions, tax rates, clients, templates, design-asset records, invoices, invoice items, e-way bills, Part-B updates, recurring profiles, credit notes, compliance tasks, compliance filings (without `user_id`, as tasks leave out their author), and audit logs. A file written before filings existed restores with none. Every record type that has `custom_fields` exports it. Restore drops a field definition whose object, key or type is not valid. It retains deleted/archived markers. It omits quotations and their lines (with `invoices.quotation_id`), protected credentials, calendar connections and their event links, users, sessions, TOTP enrolments, memberships, business definitions, installation settings, Oban jobs/peers, notifications, email delivery history, and incoming webhook events. Uploaded logo and design-image bytes are not embedded; a path reference alone is not an asset backup. Restore drops `design_assets` rows whose path or kind is malformed. A restored row makes that business the owner of the path, which is the same trust a restore already gives `doc_logo_path`; paths are unguessable content hashes, so only someone who already has the file name can claim it this way.
+The export includes selected organization settings (with the tax regime, VAT number and country, inclusive pricing and rounding) plus, in restore order, field definitions, tax rates, clients, templates, design-asset records, quotations (without `user_id`, which points at `public.users`; with `public_token` and `deleted_at`, so links and Bin state survive), quotation items, invoices (with `quotation_id`), invoice items, e-way bills, Part-B updates, recurring profiles, credit notes, compliance tasks, compliance filings (without `user_id`, as tasks leave out their author), and audit logs. A file written before filings existed restores with none. Every record type that has `custom_fields` exports it. Restore drops a field definition whose object, key or type is not valid. It retains deleted/archived markers. It omits protected credentials, calendar connections and their event links, users, sessions, TOTP enrolments, memberships, business definitions, installation settings, Oban jobs/peers, notifications, email delivery history, and incoming webhook events. Uploaded logo and design-image bytes are not embedded; a path reference alone is not an asset backup. Restore drops `design_assets` rows whose path or kind is malformed. A restored row makes that business the owner of the path, which is the same trust a restore already gives `doc_logo_path`; paths are unguessable content hashes, so only someone who already has the file name can claim it this way.
 
 Export streams explicit field maps inside one transaction. Restore replaces the listed business tables in one transaction, inserts parents before children in batches, and resynchronizes primary-key sequences. A failure rolls back the transaction. Omitted credentials must be configured separately; the file is not a copy of the application's encryption-key environment.
 

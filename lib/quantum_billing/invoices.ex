@@ -598,7 +598,7 @@ defmodule QuantumBilling.Invoices do
     quotation =
       repo.one(
         from q in QuantumBilling.Quotations.Quotation,
-          where: q.id == ^quotation_id,
+          where: q.id == ^quotation_id and is_nil(q.deleted_at),
           lock: "FOR UPDATE"
       )
 
@@ -622,6 +622,7 @@ defmodule QuantumBilling.Invoices do
       details: %{quotation_number: quotation.number, invoice_number: invoice.invoice_number}
     )
 
+    Webhooks.publish("quotation.converted", quotation.id)
     :ok
   end
 

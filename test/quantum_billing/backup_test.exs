@@ -66,7 +66,7 @@ defmodule QuantumBilling.BackupTest do
       json = Backup.export_json()
       data = Jason.decode!(json)
 
-      assert data["version"] == "3.2"
+      assert data["version"] == "3.3"
       assert [%{"name" => "Acme Corp"}] = data["clients"]
       assert [%{"invoice_number" => number}] = data["invoices"]
       assert is_binary(number)
@@ -104,6 +104,68 @@ defmodule QuantumBilling.BackupTest do
 
       # Configuration that is not a credential still travels.
       assert json =~ "rzp_live_travels"
+    end
+  end
+
+  describe "quotations" do
+    setup do
+      scope = %{
+        QuantumBilling.Accounts.Scope.for_user(QuantumBilling.AccountsFixtures.user_fixture())
+        | business: Repo.business()
+      }
+
+      %{scope: scope}
+    end
+
+    test "travel with their items, link, Bin state and invoice", %{scope: scope} do
+      open = QuantumBilling.QuotationsFixtures.quotation_fixture(scope)
+      {:ok, open} = QuantumBilling.Quotations.ensure_public_token(open)
+
+      accepted =
+        QuantumBilling.QuotationsFixtures.accepted_quotation_fixture(scope, %{
+          "custom_fields" => %{}
+        })
+
+      {:ok, invoice} =
+        accepted
+        |> QuantumBilling.Quotations.invoice_params()
+        |> Map.put("invoice_date", Date.to_iso8601(QuantumBilling.Quotations.today()))
+        |> Invoices.create_invoice(quotation_id: accepted.id)
+
+      binned = QuantumBilling.QuotationsFixtures.quotation_fixture(scope)
+      {:ok, _binned} = QuantumBilling.Quotations.delete_quotation(scope, binned)
+
+      json = Backup.export_json()
+      data = Jason.decode!(json)
+      assert length(data["quotations"]) == 3
+      assert length(data["quotation_items"]) == 3
+      refute Enum.any?(data["quotations"], &Map.has_key?(&1, "user_id"))
+
+      assert {:ok, %{quotations: 3, quotation_items: 3}} = Backup.restore_json(json)
+
+      restored = QuantumBilling.Quotations.get_quotation_by_token(open.public_token)
+      assert restored.id == open.id
+      assert [%{description: "Web Development Services"}] = restored.items
+      assert Repo.get!(Invoice, invoice.id).quotation_id == accepted.id
+      assert QuantumBilling.Quotations.get_quotation(binned.id) == nil
+      assert QuantumBilling.Quotations.get_deleted_quotation(binned.id)
+
+      # Sequences moved past the restored ids.
+      fresh = QuantumBilling.QuotationsFixtures.quotation_fixture(scope)
+      assert fresh.id > binned.id
+    end
+
+    test "a 3.2 file without quotations still restores" do
+      client_fixture()
+
+      json =
+        Backup.export_json()
+        |> Jason.decode!()
+        |> Map.drop(["quotations", "quotation_items"])
+        |> Map.put("version", "3.2")
+        |> Jason.encode!()
+
+      assert {:ok, %{quotations: 0, clients: 1}} = Backup.restore_json(json)
     end
   end
 
@@ -703,7 +765,7 @@ defmodule QuantumBilling.BackupTest do
 
       # Streamed: the download starts on the first chunk and is never held in memory whole.
       assert length(chunks) > 25
-      assert hd(chunks) =~ ~s("version":"3.2")
+      assert hd(chunks) =~ ~s("version":"3.3")
 
       document = chunks |> Enum.join() |> Jason.decode!()
       assert length(document["invoices"]) == 25

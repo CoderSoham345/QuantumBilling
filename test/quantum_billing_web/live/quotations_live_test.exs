@@ -2,6 +2,7 @@ defmodule QuantumBillingWeb.QuotationsLiveTest do
   use QuantumBillingWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import QuantumBilling.CustomFieldsFixtures, only: [field_fixture: 2]
   import QuantumBilling.QuotationsFixtures
 
   alias QuantumBilling.Quotations
@@ -97,6 +98,7 @@ defmodule QuantumBillingWeb.QuotationsLiveTest do
 
       refute has_element?(view, "#quotation-#{quotation.id}")
       assert Quotations.get_quotation(quotation.id) == nil
+      assert Quotations.get_deleted_quotation(quotation.id)
     end
   end
 
@@ -112,6 +114,44 @@ defmodule QuantumBillingWeb.QuotationsLiveTest do
                view,
                ~s(#quotation-form [name="quotation[valid_until]"][value="#{valid_until}"])
              )
+    end
+
+    test "the default validity follows the business's setting", %{conn: conn} do
+      {:ok, _} =
+        Settings.update_section(
+          Settings.get_organization(),
+          %{"quotation_validity_days" => "15"},
+          :invoice
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/quotations/new")
+
+      valid_until = Date.to_iso8601(Date.add(Quotations.today(), 15))
+
+      assert has_element?(
+               view,
+               ~s(#quotation-form [name="quotation[valid_until]"][value="#{valid_until}"])
+             )
+    end
+
+    test "saves the quotation's custom fields", %{conn: conn} do
+      field_fixture("quotation", %{"label" => "Project code", "type" => "text"})
+
+      {:ok, view, _html} = live(conn, ~p"/quotations/new")
+
+      assert has_element?(
+               view,
+               ~s(#quotation-custom-fields [name="quotation[custom_fields][project_code]"])
+             )
+
+      params = quotation_params(%{"custom_fields" => %{"project_code" => "PRJ-7"}})
+
+      assert {:error, {:live_redirect, %{to: "/quotations/" <> id}}} =
+               view |> form("#quotation-form", %{"quotation" => params}) |> render_submit()
+
+      assert Quotations.get_quotation(String.to_integer(id)).custom_fields == %{
+               "project_code" => "PRJ-7"
+             }
     end
 
     test "creates a quotation and lands on it", %{conn: conn} do

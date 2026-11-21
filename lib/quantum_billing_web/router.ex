@@ -58,11 +58,13 @@ defmodule QuantumBillingWeb.Router do
       # `/pay/:token` is the legacy link, for the first business.
       live "/p/:slug/:token", PublicInvoiceLive, :show
       live "/pay/:token", PublicInvoiceLive, :show
+      live "/q/:slug/:token", PublicQuotationLive, :show
     end
 
     # Outside the live_session, which takes only live routes.
     get "/p/:slug/:token/pdf", InvoicePdfController, :public
     get "/pay/:token/pdf", InvoicePdfController, :public
+    get "/q/:slug/:token/pdf", QuotationPdfController, :public
   end
 
   # Owner-only: account administration and the full export.
@@ -228,6 +230,12 @@ defmodule QuantumBillingWeb.Router do
     post "/invoices/:id/cancel", InvoiceController, :cancel
     post "/invoices/:id/e-invoice", InvoiceController, :register_e_invoice
     post "/invoices/:invoice_id/credit-notes", CreditNoteController, :create
+    get "/quotations", QuotationController, :index
+    post "/quotations", QuotationController, :create
+    get "/quotations/:id", QuotationController, :show
+    post "/quotations/:id/send", QuotationController, :send_email
+    post "/quotations/:id/accept", QuotationController, :accept
+    post "/quotations/:id/decline", QuotationController, :decline
     get "/credit-notes", CreditNoteController, :index
     get "/credit-notes/:id", CreditNoteController, :show
     get "/clients", ClientController, :index

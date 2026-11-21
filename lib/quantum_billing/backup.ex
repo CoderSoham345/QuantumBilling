@@ -24,16 +24,18 @@ defmodule QuantumBilling.Backup do
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Invoices.InvoiceItem
   alias QuantumBilling.Money.Paise
+  alias QuantumBilling.Quotations.Quotation
+  alias QuantumBilling.Quotations.QuotationItem
   alias QuantumBilling.Recurring.RecurringProfile
   alias QuantumBilling.Repo
   alias QuantumBilling.Settings.Organization
   alias QuantumBilling.TaxRates.TaxRate
   alias QuantumBilling.Templates.InvoiceTemplate
 
-  @version "3.2"
+  @version "3.3"
 
   # Older files are still restored; upgrade/1 brings them to the current shape.
-  @readable_versions ["2.0", "2.1", "3.0", "3.1", @version]
+  @readable_versions ["2.0", "2.1", "3.0", "3.1", "3.2", @version]
 
   # Before 3.2 every record was GST; these are the VAT columns' values for it.
   @gst_defaults %{
@@ -71,7 +73,8 @@ defmodule QuantumBilling.Backup do
                           bank_account_number bank_ifsc bank_branch tax_regime vat_number
                           vat_country prices_include_tax round_to_whole_units
                           credit_note_prefix credit_note_next_number debit_note_prefix
-                          debit_note_next_number quotation_prefix quotation_next_number)a
+                          debit_note_next_number quotation_prefix quotation_next_number
+                          quotation_validity_days)a
 
   @client_fields ~w(id client_type name display_name gstin pan legal_name business_type category
                     phone_country_code phone email billing_line1 billing_line2 billing_city
@@ -91,7 +94,23 @@ defmodule QuantumBilling.Backup do
                      razorpay_payment_url razorpay_payment_id public_token template_id
                      layout_xml deleted_at custom_fields tax_regime vat_amount tax_breakdown
                      company_tax_number client_tax_number reverse_charge prices_include_tax
-                     round_to_whole_units)a
+                     round_to_whole_units quotation_id)a
+
+  # deleted_at and public_token travel too: binned quotations stay in the Bin,
+  # and a client's emailed link keeps working after a restore.
+  @quotation_fields ~w(id number quotation_date valid_until status place_of_supply currency
+                       client_id client_name client_gstin client_pan client_billing_address
+                       client_email client_state client_city client_pincode client_tax_number
+                       company_name company_address company_gstin company_state
+                       company_tax_number tax_regime reverse_charge prices_include_tax
+                       round_to_whole_units total_items total_quantity taxable_value
+                       cgst_amount sgst_amount igst_amount cess_amount vat_amount tax_breakdown
+                       round_off grand_total remarks terms template_id layout_xml
+                       custom_fields public_token deleted_at inserted_at)a
+
+  @quotation_item_fields ~w(id quotation_id description hsn_sac quantity unit rate tax_rate
+                            amount position custom_fields tax_rate_id tax_rate_bp tax_category
+                            tax_name)a
 
   @item_fields ~w(id invoice_id description hsn_sac quantity unit rate tax_rate amount position
                   custom_fields tax_rate_id tax_rate_bp tax_category tax_name)a
@@ -139,6 +158,8 @@ defmodule QuantumBilling.Backup do
     {:clients, Client, @client_fields},
     {:templates, InvoiceTemplate, @template_fields},
     {:design_assets, DesignAsset, @design_asset_fields},
+    {:quotations, Quotation, @quotation_fields},
+    {:quotation_items, QuotationItem, @quotation_item_fields},
     {:invoices, Invoice, @invoice_fields},
     {:invoice_items, InvoiceItem, @item_fields},
     {:e_way_bills, EWayBill, @e_way_bill_fields},
@@ -241,6 +262,8 @@ defmodule QuantumBilling.Backup do
           Repo.delete_all(PartBUpdate)
           Repo.delete_all(EWayBill)
           Repo.delete_all(Invoice)
+          Repo.delete_all(QuotationItem)
+          Repo.delete_all(Quotation)
           Repo.delete_all(RecurringProfile)
           Repo.delete_all(InvoiceTemplate)
           Repo.delete_all(DesignAsset)
@@ -257,7 +280,7 @@ defmodule QuantumBilling.Backup do
 
           # Rows keep their ids, so move every sequence past them.
           Enum.each(
-            ~w(field_definitions tax_rates clients invoices invoice_items e_way_bills e_way_bill_part_b_updates
+            ~w(field_definitions tax_rates clients quotations quotation_items invoices invoice_items e_way_bills e_way_bill_part_b_updates
                invoice_templates design_assets recurring_profiles credit_notes compliance_tasks
                compliance_filings audit_logs),
             &resync_sequence/1
@@ -370,8 +393,13 @@ defmodule QuantumBilling.Backup do
         other -> other
       end)
     end)
-    |> Map.put("version", @version)
+    |> Map.put("version", "3.2")
+    |> upgrade()
   end
+
+  # 3.2 had no quotations; their sections are simply absent, and invoices'
+  # quotation_id reads as nil.
+  defp upgrade(%{"version" => "3.2"} = data), do: Map.put(data, "version", @version)
 
   defp upgrade(data), do: data
 

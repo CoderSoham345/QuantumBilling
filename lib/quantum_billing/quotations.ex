@@ -11,6 +11,11 @@ defmodule QuantumBilling.Quotations do
   Status moves Draft → Sent → Accepted or Declined. Expired is derived (see
   `Quotation.effective_status/2`). An Accepted quotation converts into one
   invoice through `Invoices.create_invoice/2` with `quotation_id:`.
+
+  Writes take an actor first: a `%Scope{}` (a signed-in member), or keyword
+  options for the audit row (`user_id:`, `api_key_id:`, `ip_address:`, and
+  `via:` for the client's public link). Deleting moves a quotation to the
+  Bin; every read here leaves binned ones out unless it says otherwise.
   """
 
   import Ecto.Query, warn: false
@@ -19,16 +24,19 @@ defmodule QuantumBilling.Quotations do
   alias QuantumBilling.Accounts.Scope
   alias QuantumBilling.Audit
   alias QuantumBilling.Compliance
+  alias QuantumBilling.CustomFields
   alias QuantumBilling.Invoices
   alias QuantumBilling.Invoices.Invoice
   alias QuantumBilling.Invoices.InvoiceItem
   alias QuantumBilling.Money
   alias QuantumBilling.Paging
+  alias QuantumBilling.QuotationNotifier
   alias QuantumBilling.Quotations.Quotation
   alias QuantumBilling.Quotations.QuotationItem
   alias QuantumBilling.Repo
   alias QuantumBilling.Settings
   alias QuantumBilling.Settings.Organization
+  alias QuantumBilling.Webhooks
 
   # Allowlisted: the sort field comes from the browser.
   @sortable %{
@@ -42,8 +50,16 @@ defmodule QuantumBilling.Quotations do
   @default_per_page 10
   @max_per_page 200
 
-  @doc "How long a new quotation stays valid by default, in days."
-  def default_validity_days, do: 30
+  @doc "How long a new quotation stays valid, in days: the business's setting, 30 by default."
+  def validity_days(%Organization{quotation_validity_days: days})
+      when is_integer(days) and days > 0,
+      do: days
+
+  def validity_days(_organization), do: 30
+
+  @doc "The Valid Until date a quotation dated `date` starts with."
+  def default_valid_until(%Organization{} = organization, %Date{} = date),
+    do: Date.add(date, validity_days(organization))
 
   @doc "Today where the business is: the day Expired is judged against."
   def today, do: Compliance.local_date()
@@ -56,7 +72,8 @@ defmodule QuantumBilling.Quotations do
 
   Options: `:search` (number or client), `:status` (Draft, Sent, Accepted,
   Declined or Expired; Draft and Sent leave the expired ones out), `:today`,
-  `:sort_field`, `:sort_dir`, `:page`, `:per_page`, `:count`.
+  `:sort_field`, `:sort_dir`, `:page`, `:per_page`, `:count`, and
+  `:keyset`/`:before_id` for the API's cursor paging.
   """
   def page(opts \\ []) do
     per_page = opts |> Keyword.get(:per_page, @default_per_page) |> clamp(1, @max_per_page)
@@ -64,15 +81,21 @@ defmodule QuantumBilling.Quotations do
     sort_dir = Keyword.get(opts, :sort_dir, :desc)
     today = Keyword.get_lazy(opts, :today, &today/0)
 
-    result =
-      Quotation
+    query =
+      Quotation.kept()
       |> search_where(Keyword.get(opts, :search))
       |> status_where(Keyword.get(opts, :status), today)
-      |> Paging.page(&order(&1, sort_field, sort_dir),
-        page: Keyword.get(opts, :page, 1),
-        per_page: per_page,
-        count: Keyword.get(opts, :count, false)
-      )
+
+    result =
+      if Keyword.get(opts, :keyset, false) do
+        Paging.keyset(query, Keyword.get(opts, :before_id), per_page)
+      else
+        Paging.page(query, &order(&1, sort_field, sort_dir),
+          page: Keyword.get(opts, :page, 1),
+          per_page: per_page,
+          count: Keyword.get(opts, :count, false)
+        )
+      end
 
     %{result | rows: Repo.preload(result.rows, :invoice)}
   end
@@ -80,7 +103,7 @@ defmodule QuantumBilling.Quotations do
   @doc "How many quotations show each status on `today`, Expired included."
   def status_counts(today \\ today()) do
     shown =
-      from q in Quotation,
+      from q in Quotation.kept(),
         select: %{
           status:
             fragment(
@@ -130,12 +153,58 @@ defmodule QuantumBilling.Quotations do
 
   defp clamp(_value, minimum, _maximum), do: minimum
 
-  @doc "Fetches a quotation with its lines and any linked invoice, or `nil`."
+  @doc "Fetches a quotation (not in the Bin) with its lines and any linked invoice, or `nil`."
   def get_quotation(id) do
-    case Integer.parse(to_string(id)) do
-      {int_id, ""} -> Quotation |> Repo.get(int_id) |> with_assocs()
-      _not_an_id -> nil
+    case parse_id(id) do
+      {:ok, int_id} -> Quotation.kept() |> Repo.get(int_id) |> with_assocs()
+      :error -> nil
     end
+  end
+
+  @doc "Fetches a quotation in the Bin, or `nil`."
+  def get_deleted_quotation(id) do
+    case parse_id(id) do
+      {:ok, int_id} -> Quotation.binned() |> Repo.get(int_id) |> with_assocs()
+      :error -> nil
+    end
+  end
+
+  defp parse_id(id) when is_integer(id), do: {:ok, id}
+
+  defp parse_id(id) do
+    case Integer.parse(to_string(id)) do
+      {int_id, ""} -> {:ok, int_id}
+      _not_an_id -> :error
+    end
+  end
+
+  @doc "Quotations in the Bin, most recently deleted first. Takes `limit:`."
+  def list_deleted_quotations(opts \\ []) do
+    Quotation.binned()
+    |> order_by([q], desc: q.deleted_at, desc: q.id)
+    |> Paging.bounded(opts)
+    |> Repo.all()
+  end
+
+  @doc "How many quotations are in the Bin."
+  def count_deleted_quotations, do: Repo.aggregate(Quotation.binned(), :count)
+
+  @doc """
+  The quotation behind a public link, or `nil`. Binned quotations have no link.
+  """
+  def get_quotation_by_token(token) when is_binary(token) and token != "" do
+    Quotation.kept() |> Repo.get_by(public_token: token) |> with_assocs()
+  end
+
+  def get_quotation_by_token(_token), do: nil
+
+  @doc "Gives a quotation saved before public links existed its token; others are returned as they are."
+  def ensure_public_token(%Quotation{public_token: token} = quotation)
+      when is_binary(token) and token != "",
+      do: {:ok, quotation}
+
+  def ensure_public_token(%Quotation{} = quotation) do
+    quotation |> Quotation.token_changeset() |> Repo.update()
   end
 
   @doc "As `get_quotation/1`, but raises when missing."
@@ -172,7 +241,7 @@ defmodule QuantumBilling.Quotations do
     do: Invoices.company_snapshot(organization)
 
   @doc "Creates a quotation with the next number in the quotation series."
-  def create_quotation(%Scope{} = scope, attrs) do
+  def create_quotation(actor, attrs) do
     # Outside the transaction, as for invoices: these reads must not deadlock.
     _organization = Settings.ensure_organization()
     template = Invoices.resolve_template(attrs)
@@ -187,7 +256,7 @@ defmodule QuantumBilling.Quotations do
     end)
     |> Multi.insert(:quotation, fn %{organization: locked} ->
       trusted =
-        %{number: Settings.next_quotation_number(locked), user_id: scope.user.id}
+        %{number: Settings.next_quotation_number(locked), user_id: actor_user_id(actor)}
         |> Map.merge(Invoices.company_snapshot(locked))
         |> Map.merge(Invoices.layout_snapshot(template))
         |> Map.put(:default_currency, Organization.currency_code(locked))
@@ -205,7 +274,8 @@ defmodule QuantumBilling.Quotations do
     |> Repo.transaction()
     |> case do
       {:ok, %{quotation: quotation}} ->
-        audit(:create_quotation, quotation, scope)
+        audit(:create_quotation, quotation, actor)
+        Webhooks.publish("quotation.created", quotation.id)
         {:ok, with_assocs(quotation)}
 
       {:error, :quotation, changeset, _changes} ->
@@ -221,7 +291,7 @@ defmodule QuantumBilling.Quotations do
   (`{:error, :locked}`). The number and company block never change; the
   design is re-taken from the form.
   """
-  def update_quotation(%Scope{} = scope, %Quotation{} = quotation, attrs) do
+  def update_quotation(actor, %Quotation{} = quotation, attrs) do
     if Quotation.editable?(quotation) do
       trusted = attrs |> Invoices.resolve_template() |> Invoices.layout_snapshot()
 
@@ -231,7 +301,8 @@ defmodule QuantumBilling.Quotations do
       |> Repo.update()
       |> case do
         {:ok, quotation} ->
-          audit(:update_quotation, quotation, scope)
+          audit(:update_quotation, quotation, actor)
+          Webhooks.publish("quotation.updated", quotation.id)
           {:ok, with_assocs(quotation)}
 
         {:error, changeset} ->
@@ -243,31 +314,31 @@ defmodule QuantumBilling.Quotations do
   end
 
   @doc "Draft → Sent. An expired draft needs a later `valid_until` first."
-  def mark_sent(%Scope{} = scope, %Quotation{} = quotation) do
-    transition(scope, quotation, "Sent", :quotation_sent, fn q ->
+  def mark_sent(actor, %Quotation{} = quotation) do
+    transition(actor, quotation, "Sent", :quotation_sent, fn q ->
       q.status == "Draft" and not expired?(q)
     end)
   end
 
   @doc "Draft or Sent → Accepted. An expired quotation needs a later `valid_until` first."
-  def accept(%Scope{} = scope, %Quotation{} = quotation) do
-    transition(scope, quotation, "Accepted", :quotation_accepted, fn q ->
+  def accept(actor, %Quotation{} = quotation) do
+    transition(actor, quotation, "Accepted", :quotation_accepted, fn q ->
       q.status in ["Draft", "Sent"] and not expired?(q)
     end)
   end
 
   @doc "Draft or Sent (expired or not) → Declined."
-  def decline(%Scope{} = scope, %Quotation{} = quotation) do
-    transition(scope, quotation, "Declined", :quotation_declined, fn q ->
+  def decline(actor, %Quotation{} = quotation) do
+    transition(actor, quotation, "Declined", :quotation_declined, fn q ->
       q.status in ["Draft", "Sent"]
     end)
   end
 
-  defp transition(scope, quotation, status, action, allowed?) do
-    # Re-read under a lock: the page may be showing a stale status.
+  defp transition(actor, quotation, status, action, allowed?) do
+    # Re-read under a lock: the page may be showing a stale status, or it was binned.
     Repo.transaction(fn ->
       current =
-        Repo.one(from q in Quotation, where: q.id == ^quotation.id, lock: "FOR UPDATE")
+        Repo.one(from q in Quotation.kept(), where: q.id == ^quotation.id, lock: "FOR UPDATE")
 
       cond do
         is_nil(current) ->
@@ -285,7 +356,8 @@ defmodule QuantumBilling.Quotations do
     end)
     |> case do
       {:ok, updated} ->
-        audit(action, updated, scope)
+        audit(action, updated, actor)
+        publish_status(status, updated.id)
         {:ok, with_assocs(updated)}
 
       {:error, reason} ->
@@ -293,23 +365,93 @@ defmodule QuantumBilling.Quotations do
     end
   end
 
-  defp expired?(quotation), do: Quotation.effective_status(quotation, today()) == "Expired"
+  # Spelled out, so a search for an event type finds where it is published.
+  defp publish_status("Sent", id), do: Webhooks.publish("quotation.sent", id)
+  defp publish_status("Accepted", id), do: Webhooks.publish("quotation.accepted", id)
+  defp publish_status("Declined", id), do: Webhooks.publish("quotation.declined", id)
 
-  @doc "Deletes a quotation for good, unless it has been converted (`{:error, :converted}`)."
-  def delete_quotation(%Scope{} = scope, %Quotation{} = quotation) do
+  @doc "Whether `quotation` reads as Expired today."
+  def expired?(quotation), do: Quotation.effective_status(quotation, today()) == "Expired"
+
+  @doc """
+  Emails the quotation, PDF attached and with the client's link, to
+  `recipient`. A draft is marked Sent. An expired quotation is refused
+  (`{:error, :expired}`): extend Valid Until first.
+  """
+  def send_email(actor, %Quotation{} = quotation, recipient) do
+    with :ok <- if(expired?(quotation), do: {:error, :expired}, else: :ok),
+         {:ok, quotation} <- ensure_public_token(quotation),
+         {:ok, delivery} <- QuotationNotifier.deliver_async(recipient, quotation) do
+      audit(:email_quotation, quotation, actor, %{to: delivery.to_email})
+
+      quotation =
+        case quotation.status do
+          "Draft" ->
+            case mark_sent(actor, quotation) do
+              {:ok, sent} -> sent
+              {:error, _reason} -> with_assocs(quotation)
+            end
+
+          _other ->
+            with_assocs(quotation)
+        end
+
+      {:ok, quotation, delivery}
+    end
+  end
+
+  @doc """
+  Moves a quotation to the Bin, unless it has been converted
+  (`{:error, :converted}`): the invoice keeps pointing at it.
+  """
+  def delete_quotation(actor, %Quotation{} = quotation) do
     quotation = Repo.preload(quotation, :invoice, force: true)
 
-    if Quotation.converted?(quotation) do
-      {:error, :converted}
-    else
-      case Repo.delete(quotation) do
-        {:ok, deleted} ->
-          audit(:delete_quotation, deleted, scope)
-          {:ok, deleted}
+    cond do
+      Quotation.converted?(quotation) ->
+        {:error, :converted}
 
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      not is_nil(quotation.deleted_at) ->
+        {:ok, quotation}
+
+      true ->
+        case quotation |> Quotation.bin_changeset() |> Repo.update() do
+          {:ok, binned} ->
+            audit(:delete_quotation, binned, actor)
+            {:ok, binned}
+
+          {:error, changeset} ->
+            {:error, changeset}
+        end
+    end
+  end
+
+  @doc "Takes a quotation out of the Bin."
+  def restore_quotation(actor, %Quotation{} = quotation) do
+    case quotation |> Quotation.restore_changeset() |> Repo.update() do
+      {:ok, restored} ->
+        audit(:restore_quotation, restored, actor)
+        {:ok, with_assocs(restored)}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Deletes a binned quotation for good, lines included. One not in the Bin is
+  refused (`{:error, :not_in_bin}`).
+  """
+  def purge_quotation(_actor, %Quotation{deleted_at: nil}), do: {:error, :not_in_bin}
+
+  def purge_quotation(actor, %Quotation{} = quotation) do
+    case Repo.delete(quotation) do
+      {:ok, purged} ->
+        audit(:purge_quotation, purged, actor)
+        {:ok, purged}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -327,6 +469,7 @@ defmodule QuantumBilling.Quotations do
   """
   def invoice_params(%Quotation{} = quotation) do
     quotation = Repo.preload(quotation, :items)
+    item_carry = carry_fn("quotation_item", "invoice_item")
 
     %{
       "client_id" => (quotation.client_id && to_string(quotation.client_id)) || "",
@@ -348,9 +491,26 @@ defmodule QuantumBilling.Quotations do
         quotation.items
         |> Enum.sort_by(& &1.position)
         |> Enum.with_index()
-        |> Map.new(fn {item, index} -> {to_string(index), item_params(item, index)} end)
+        |> Map.new(fn {item, index} ->
+          {to_string(index), item |> item_params(index) |> put_custom(item_carry, item)}
+        end)
     }
     |> maybe_put("template_id", quotation.template_id)
+    |> put_custom(carry_fn("quotation", "invoice"), quotation)
+  end
+
+  # Values of fields the invoice shares by key and type; the rest stay on the quotation.
+  defp carry_fn(from_object, to_object) do
+    from = CustomFields.active_definitions(from_object)
+    to = if from == [], do: [], else: CustomFields.active_definitions(to_object)
+    &CustomFields.carry_over(&1, from, to)
+  end
+
+  defp put_custom(params, carry, %{custom_fields: values}) do
+    case carry.(values || %{}) do
+      empty when empty == %{} -> params
+      carried -> Map.put(params, "custom_fields", carried)
+    end
   end
 
   defp item_params(%QuotationItem{} = item, index) do
@@ -418,7 +578,7 @@ defmodule QuantumBilling.Quotations do
       terms: quotation.terms,
       template_id: quotation.template_id,
       layout_xml: quotation.layout_xml,
-      custom_fields: %{},
+      custom_fields: quotation.custom_fields || %{},
       items: Enum.map(quotation.items, &as_invoice_item/1)
     }
   end
@@ -437,19 +597,34 @@ defmodule QuantumBilling.Quotations do
       tax_name: item.tax_name,
       amount: item.amount,
       position: item.position,
-      custom_fields: %{}
+      custom_fields: item.custom_fields || %{}
     }
   end
 
-  defp audit(action, %Quotation{} = quotation, %Scope{} = scope) do
-    Audit.log_event(action, "Quotation", quotation.id,
-      user_id: scope.user && scope.user.id,
-      details: %{
+  defp audit(action, %Quotation{} = quotation, actor, extra \\ %{}) do
+    opts = actor_opts(actor)
+
+    details =
+      %{
         number: quotation.number,
         client_name: quotation.client_name,
         status: quotation.status,
         grand_total: quotation.grand_total
       }
+      |> Map.merge(extra)
+      |> then(&if opts[:via], do: Map.put(&1, :via, opts[:via]), else: &1)
+
+    Audit.log_event(action, "Quotation", quotation.id,
+      user_id: opts[:user_id],
+      api_key_id: opts[:api_key_id],
+      ip_address: opts[:ip_address],
+      details: details
     )
   end
+
+  defp actor_opts(%Scope{user: user}), do: [user_id: user && user.id]
+  defp actor_opts(opts) when is_list(opts), do: opts
+  defp actor_opts(_none), do: []
+
+  defp actor_user_id(actor), do: actor |> actor_opts() |> Keyword.get(:user_id)
 end

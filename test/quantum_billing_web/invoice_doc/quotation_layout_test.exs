@@ -12,7 +12,7 @@ defmodule QuantumBillingWeb.InvoiceDoc.QuotationLayoutTest do
 
   defp types(document), do: Enum.map(document.blocks, & &1.type)
 
-  test "drops the payment and custom-field blocks" do
+  test "drops the payment block and keeps custom fields" do
     adapted =
       [
         Catalog.new(:heading, "h"),
@@ -23,7 +23,7 @@ defmodule QuantumBillingWeb.InvoiceDoc.QuotationLayoutTest do
       |> document()
       |> QuotationLayout.adapt()
 
-    assert types(adapted) == [:heading, :items]
+    assert types(adapted) == [:heading, :items, :custom_fields]
   end
 
   test "blanks the heading so it reads the document type, Quotation" do
