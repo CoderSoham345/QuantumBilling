@@ -2,9 +2,9 @@ defmodule QuantumBillingWeb.SettingsLive.Team do
   @moduledoc """
   Owner-only: members of the current business and pending invitations.
 
-  Inviting an existing account adds it at once. Removing someone removes only
-  this business. The `on_mount` hook is the real guard; a plug alone isn't
-  once the socket connects.
+  Inviting any email creates a pending invitation that the recipient must
+  accept while signed in. Removing someone removes only this business. The
+  `on_mount` hook is the real guard; a plug alone isn't once the socket connects.
   """
   use QuantumBillingWeb, :live_view
 
@@ -49,25 +49,6 @@ defmodule QuantumBillingWeb.SettingsLive.Team do
          |> put_flash(:info, "Invitation sent to #{invitation.email}.")
          |> assign(:invite_email, "")
          |> load_team()}
-
-      {:ok, {:added, membership}} ->
-        QuantumBilling.SecurityAlerts.admin_event(
-          business,
-          inviter,
-          "gave the existing account #{email} access as #{role}"
-        )
-
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "#{membership.user.email} already had an account and is now on the team."
-         )
-         |> assign(:invite_email, "")
-         |> load_team()}
-
-      {:error, :already_member} ->
-        {:noreply, put_flash(socket, :error, "That person is already on the team.")}
 
       {:error, :invalid_email} ->
         {:noreply, put_flash(socket, :error, "Enter an email address to invite.")}
@@ -189,9 +170,9 @@ defmodule QuantumBillingWeb.SettingsLive.Team do
       <.card class="mb-3">
         <h3 class="mb-1 text-sm font-semibold">Invite someone</h3>
         <p class="mb-3 text-xs text-base-content/60">
-          Someone who already has an account is added straight away. Anyone else gets a
-          sign-up link that works once, expires in {QuantumBilling.Accounts.Invitation.validity_days()} days,
-          and only works for the address you enter.
+          Anyone you invite gets an invitation link that works once, expires in
+          {QuantumBilling.Accounts.Invitation.validity_days()} days, only works for the address you
+          enter, and only adds them to the team after they accept while signed in.
         </p>
 
         <form id="invite-form" phx-submit="invite" class="flex flex-col gap-2 sm:flex-row">
