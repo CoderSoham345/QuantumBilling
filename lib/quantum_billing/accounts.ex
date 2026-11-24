@@ -920,7 +920,7 @@ il."
 
   Always returns `:ok`, whatever the address turns out to be. Reporting "no
   such account" here would turn the form into a way to ask which addresses hold
-  accounts, so the caller cannot tell an unknown address from a known one — and
+  accounts, so the caller cannot tell an unknown address from a known one Ã¢â‚¬â€ and
   neither can anyone else.
 
   Unconfirmed accounts are included on purpose: following a link sent to the
@@ -994,6 +994,7 @@ il."
     Repo.delete_all(from(UserToken, where: [token: ^token, context: "session"]))
     :ok
   end
+  # In QuantumBilling.Accounts
 
   defp update_user_and_delete_all_tokens(changeset) do
     Repo.transact(fn ->
