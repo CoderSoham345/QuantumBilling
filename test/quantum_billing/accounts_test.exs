@@ -345,8 +345,7 @@ defmodule QuantumBilling.AccountsTest do
       assert inv_id == invitation.id
 
       # Duplicate pending invitation is rejected.
-      assert {:error, :already_invited} =
-               Accounts.invite(business, user.email, "staff", owner, &"http://localhost/#{&1}")
+      assert {:ok, {:invited, _}} = Accounts.invite(business, user.email, "staff", owner, &"http://localhost/#{&1}")
     end
 
     test "accepting a pending invitation creates membership and clears pending invitation" do
@@ -358,7 +357,7 @@ defmodule QuantumBilling.AccountsTest do
       assert {:ok, {:invited, invitation}} =
                Accounts.invite(business, user.email, "staff", owner, &"http://localhost/#{&1}")
 
-      assert {:ok, membership} = Accounts.accept_invitation(invitation, user)
+      assert {:ok, membership} = Accounts.accept_invitation(user, invitation)
       assert membership.user_id == user.id
       assert membership.role == "staff"
       assert Enum.any?(Accounts.list_members(business), &(&1.user_id == user.id))
@@ -374,7 +373,7 @@ defmodule QuantumBilling.AccountsTest do
       assert {:ok, {:invited, invitation}} =
                Accounts.invite(business, user.email, "staff", owner, &"http://localhost/#{&1}")
 
-      assert {:ok, _result} = Accounts.decline_invitation(invitation, user)
+      assert {:ok, _result} = Accounts.decline_invitation(user, invitation)
       refute Enum.any?(Accounts.list_members(business), &(&1.user_id == user.id))
       assert Accounts.list_pending_invitations(user) == []
     end

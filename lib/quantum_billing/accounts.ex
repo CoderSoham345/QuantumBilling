@@ -305,14 +305,6 @@ il."
   end
 
   @doc """
-  Brings `email` into `business` as `role`.
-
-  Returns `{:ok, {:added, membership}}` for an existing account, or
-  `{:ok, {:invited, invitation}}` after emailing an invitation. Re-inviting
-  replaces the pending invitation. Returns `{:error, {:delivery_failed, msg}}`
-  if the email is refused.
-  """
-  @doc """
   Invites `email` to join `business` as `role`.
 
   Always creates a pending invitation and sends an invitation email, even when
